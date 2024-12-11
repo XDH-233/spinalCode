@@ -1,0 +1,368 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>
+      RDMA DFX Regs Register Interface
+    </title>
+    <style>
+      div{
+          text-align: center;
+      }
+
+      body{ font-size: 0.8em; }
+      p.regif-title{
+          font-weight:800;
+          font-size:1.2em;
+      }
+      td{
+          white-space:pre-line; word-wrap: break-word; word-break: break-all;
+      }
+      td.fixWidth{
+          min-width:50px;
+          max-width:300px;
+      }
+      td.fixWidth2{
+          min-width:50px;
+          max-width:400px;
+      }
+      footer div p.info{
+          font-weight:300;
+          font-size:0.7em;
+      }
+      a {
+        color:black;text-decoration:none;
+      }
+      a:hover {
+          color:#09f;
+      }
+
+
+      .theme-default {
+          border: 3px solid #000;
+          border-collapse: collapse;
+      }
+      .theme-default td,
+      .theme-default th{
+          border: 1px solid #000;
+          border-top: 1px dashed #555;
+          border-bottom: 1px dashed #555;
+          padding: 3px;
+      }
+      .theme-default th{
+          background: #bbb;
+      }
+      .theme-default tbody td.reserved{
+          color: #bbb;
+          font-weight:200;
+          background : #eee;
+          /* text-decoration:line-through; */
+          text-decoration-color:#888;
+      }
+      .theme-default tr.blk, .theme-default tr.grp{
+          border-top: 2px solid #000;
+      }
+      .theme-default tr.reg, .theme-default tr.ram, .theme-default tr.fifo{
+          border-top: 1px solid #000;
+      }
+      td.fifo{
+          background :
+               linear-gradient(to right, #ddd 1px, transparent 1px);
+          background-size: 6px 6px;
+      }
+      td.ram{
+          background:
+               linear-gradient(to right,  #ddd 1px, transparent 1px),
+               linear-gradient(to bottom, #ddd 1px, transparent 1px);
+          background-size: 6px 6px;
+      }
+
+
+      .theme-spring{
+          border-collapse: collapse;
+          font-size: 1.0em;
+          min-width: 800px;
+          border-radius: 5px 5px 0 0 ;
+          overflow: hidden;
+          box-shadow: 0 -10px 20px rgba(0,0,0,0.15);
+      }
+      .theme-spring th,
+      .theme-spring td {
+          padding:5px 10px;
+      }
+      .theme-spring thead tr {
+          background-color: #009879;
+          color: #ffffff;
+          text-align:center;
+          font-weight: bold;
+      }
+      .theme-spring tbody tr{
+          border-bottom: 1px solid #ddd;
+      }
+      .theme-spring tbody td{
+          border: 1px solid #ddd;
+      }
+      .theme-spring tbody tr:last-of-type{
+          border-bottom: 3px solid #009879;
+      }
+      .theme-spring tbody tr.active-row {
+          font-weight: bold;
+          color: #009879;
+      }
+      .theme-spring tbody td.reserved{
+          color: #aaa;
+          background : #fffff0;
+          /* font-style:italic; */
+          font-weight:200;
+          font-size:1.0em;
+      }
+      .theme-spring tbody tr.green{
+          background :#fffff0 ;
+      }
+
+    </style>
+  </head>
+  <body>
+  <header align="center">
+  <p class="regif-title"> RDMA DFX Regs Register Interface register interface </p>
+  </header>
+  <div class="table">
+  <table  align="center" class="theme-default">
+      <br/>
+
+      <thead>
+        <tr align="center" >
+          <th>Group</th>
+          <th>AddressOffset</th>
+          <th>Type</th>
+          <th>RegName</th>
+          <th>Description</th>
+          <th>Width</th>
+          <th>Section</th>
+          <th>FieldName</th>
+          <th>R/W</th>
+          <th>Reset value</th>
+          <th>Field-Description</th>
+        </tr>
+      </thead>
+
+      <tbody>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x80000</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG0 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_cmd_id_bitmap</td>
+            <td class="" align="center">RO</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left">bitmap of cmd_ids</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x80004</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG1 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_fsm_state_db_proc</td>
+            <td class="" align="center">RO</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left">fsm state of db process</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x80008</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG2 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_fsm_state_dma_rreq_proc</td>
+            <td class="" align="center">RO</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left">fsm state of dma rreq process</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x8000c</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG3 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_fsm_state_cmd_parser</td>
+            <td class="" align="center">RO</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left">fsm state of cmd parser</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x80010</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG4 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_fsm_state_avst_width</td>
+            <td class="" align="center">RO</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left">fsm state of avst width half</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x80014</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG5 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_fsm_state_cmd_rsp_proc</td>
+            <td class="" align="center">RO</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left">fsm state of cmd rsp proc</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x800c4</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG6 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cmdq_rw_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'hffffffff</td>
+            <td class=" fixWidth2" align="left">RW test reg for cmdq proc</td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x81ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG7 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >cq_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x82ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG8 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >db_scheduler_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x83ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG9 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >eq_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x84ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG10 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >mr_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x85ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG11 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >qp_manager_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x86ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG12 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >rx_pkt_parser_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x87ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG13 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >rx_pkt_processor_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x88ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG14 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >timer_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x89ffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG15 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >tx_dma_ctrl_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x8affc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG16 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >tx_pkt_gen_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x8bffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG17 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >tx_wqe_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+<tr align="center" class="grp">       <td  rowspan="1">-</td>
+            <td align="center" rowspan="1" class="reg">0x8cffc</td>
+            <td align="center" rowspan="1" class="reg">REG</td>
+            <td align="left" rowspan="1">REGINST</td>
+            <td class="fixWidth" align="center" rowspan="1">REG18 </td>
+            <td align="center" rowspan="1">32</td>
+                     <td class="" align="left"  >[31:0]</td>
+            <td class="" align="left"  >rx_wqe_rw_test_reg</td>
+            <td class="" align="center">RW</td>
+            <td class="" align="right" >32'h00000000</td>
+            <td class=" fixWidth2" align="left"></td></tr>
+      </tbody>
+  </table>
+  </div>
+  <footer align="center">
+  <div> <p class="info">Powered by <a href="https://spinalhdl.github.io/SpinalDoc-RTD/"> SpinalHDL </a> </p> </div>
+  <div> <p class="info"> Wed Oct 23 10:58:51 CST 2024 </p> </div>
+  </footer>
+  </body>
+</html>

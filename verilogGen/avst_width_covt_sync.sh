@@ -1,0 +1,1 @@
+scp ../simWorkspace/AvstCovtDemo/rtl/AvstCovtDemo.v lenovo:/home/dh.xiang/verilog/crs_fpga/design/rdma_subsystem/command_queue/sim/cocotb/avst_width_covt_test

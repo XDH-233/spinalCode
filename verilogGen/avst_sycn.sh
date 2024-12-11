@@ -1,0 +1,1 @@
+scp avst_arbiter_lock/* lenovo:/home/dh.xiang/verilog/crs_fpga/design/rdma_subsystem/command_queue/sim/cocotb/avst_arbiter_test
