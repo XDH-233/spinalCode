@@ -1,6 +1,6 @@
 CWD=$(shell pwd)
 export COCOTB_REDUCED_LOG_FMT = 1
-SIM ?= icarus
+SIM ?= verilator
 WAVES=1
 TOPLEVEL_LANG ?= verilog
 ifeq ($(TOPLEVEL_LANG),verilog)

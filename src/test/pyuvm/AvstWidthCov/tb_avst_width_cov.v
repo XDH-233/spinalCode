@@ -1,5 +1,5 @@
 module tb_avst_width_cov (
-//    input          clk                   ,
+    input          clk                   ,
     input          rst                   ,
     output         avst_d_in_ready         ,
     input          avst_d_in_valid         ,
@@ -36,10 +36,10 @@ module tb_avst_width_cov (
 );
 
 
-    reg  clk;
-
-    initial clk = 0;
-    always #5 clk = ~clk;
+//    reg  clk;
+//
+//    initial clk = 0;
+//    always #5 clk = ~clk;
 
 AvstCovtDemo u_AvstCovtDemo(
 .avst_in_ready                        ( avst_d_in_ready         ),
