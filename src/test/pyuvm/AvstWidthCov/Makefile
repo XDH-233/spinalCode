@@ -3,6 +3,8 @@ export COCOTB_REDUCED_LOG_FMT = 1
 SIM ?= verilator
 WAVES=1
 
+export RANDOM_SEED := 123456789
+
 TOPLEVEL_LANG ?= verilog
 VERILOG_SOURCES +=$(CWD)/../../../../simWorkspace/AvstCovtDemo/rtl/AvstCovtDemo.v
 VERILOG_SOURCES +=$(CWD)/tb_avst_width_cov.v

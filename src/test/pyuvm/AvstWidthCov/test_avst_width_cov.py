@@ -19,7 +19,6 @@ from src.test.pyuvm.lib import *
 
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger()
-# logger.setLevel(logging.DEBUG)
 
 
 @enum.unique
@@ -59,12 +58,9 @@ class DivideSeq(uvm_sequence):
     async def body(self):
         for _ in range(10):
             cmd = AvstSeqItem("cmd", None, None,Ops.DIVIDE)
-            logger.error("DivideSeq: start_item")
-            await self.start_item(cmd) #FIXME: Blocked
-            logger.error("DivideSeq: start_item done!")
+            await self.start_item(cmd)
             cmd.randomize_data()
             await self.finish_item(cmd)
-            logger.error("DivideSeq: finish_item done!")
 
 class ExpandSeq(uvm_sequence):
     async def body(self):
@@ -109,6 +105,7 @@ class AvstWidthCovBfm(metaclass=utility_classes.Singleton):
 
     async def driver_bfm(self):
         while True:
+            await RisingEdge(self.dut.clk)
             try:
                 (data, channel, op) = self.driver_queue.get_nowait()
                 if op == Ops.DIVIDE:
@@ -131,25 +128,15 @@ class Driver(uvm_driver):
     def start_of_simulation_phase(self):
         self.bfm = AvstWidthCovBfm()
         clock = Clock(self.bfm.dut.clk, 10, units="us")  # Create a 10us period clock on port clk
-        cocotb.start_soon(clock.start(start_high=False))
+        cocotb.start_soon(clock.start())
 
     async def launch_tb(self):
         await self.bfm.reset()
         self.bfm.start_bfm()
-
     async def run_phase(self):
         await self.launch_tb()
-        seqr = ConfigDB().get(None, "", "SEQR")
-        seq_q = seqr.seq_q
-        export = seqr.seq_item_export
-        cmd_bp = AvstSeqItem("cmd", None, None, Ops.EXPAND)
-        cmd_bp.randomize_data()
-        await self.bfm.send_op(cmd_bp.data, cmd_bp.channel, cmd_bp.op) # sequencer bypass
-        self.logger.warning("sent op bypass sequencer")
         while True:
-            self.logger.warning("Now lets fetch a item sequence!")
             cmd = await self.seq_item_port.get_next_item() #FIXME: blocked
-            self.logger.warning(f"Got a item from sequence!")
             await self.bfm.send_op(cmd.data, cmd.channel, cmd.op)
             self.seq_item_port.item_done()
 
@@ -176,6 +163,12 @@ class AvstWidthCovTest(uvm_test):
 
     def end_of_elaboration_phase(self):
         self.test_all = TestAllSeq.create("test_all")
+        self.set_logging_level(logging.DEBUG)
+        # file_handler = logging.FileHandler("log.log", mode="w")
+        # self.add_logging_handler_hier(file_handler)
+        # self.remove_streaming_handler_hier()
+        # logger.addHandler(file_handler)
+        # logger.removeHandler()
 
     async def run_phase(self):
         self.raise_objection()
