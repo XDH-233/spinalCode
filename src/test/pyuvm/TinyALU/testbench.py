@@ -244,8 +244,8 @@ class AluEnv(uvm_env):
     def build_phase(self):
         self.seqr = uvm_sequencer("seqr", self)
         ConfigDB().set(None, "*", "SEQR", self.seqr)
-        self.driver = Driver.create("driver", self)
-        self.cmd_mon = Monitor("cmd_mon", self, "get_cmd")
+        self.driver = Driver.create("driver", self) # attention: Driver did not override __init__, use create()
+        self.cmd_mon = Monitor("cmd_mon", self, "get_cmd") # bus monitor override __init__
         self.coverage = Coverage("coverage", self)
         self.scoreboard = Scoreboard("scoreboard", self)
 
