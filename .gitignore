@@ -22,3 +22,12 @@
 sim_build
 
 **/results.xml
+
+
+#vcs
+**/verdiLog
+novas.*
+ucli.key
+
+#python
+**/__pycache__

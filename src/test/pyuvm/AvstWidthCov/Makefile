@@ -30,8 +30,7 @@ else ifeq ($(SIM), vcs)
 		-lca \
 		-l build.log \
 		+lint=TFIPC-L \
-		+error+10000 \
-		-f ${PWD}/filelist.f \
+		+error+10000
 
 endif
 
