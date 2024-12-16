@@ -241,5 +241,6 @@ class AvstWidthCovTest(uvm_test):
     async def run_phase(self):
         self.raise_objection()
         await self.test_all.start()
+        await ClockCycles(self.env.driver.bfm.dut.clk, 1000)
         self.drop_objection()
 

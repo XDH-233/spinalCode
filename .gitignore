@@ -27,6 +27,7 @@ sim_build
 #vcs
 **/verdiLog
 novas.*
+*.fsdb
 ucli.key
 
 #python

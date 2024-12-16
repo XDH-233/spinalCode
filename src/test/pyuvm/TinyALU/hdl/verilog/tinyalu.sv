@@ -9,6 +9,13 @@ module tinyalu (
     output [15:0] result
 );
 
+    // initial begin
+    //     if($test$plusargs("fsdb")) begin
+    //         $dumpfile("dump.fsdb");
+    //         $dumpvars(0, tinyalu);
+    //     end
+    // end
+
     wire [15:0] result_aax, result_mult;
     wire start_single, start_mult;
     wire done_aax;
