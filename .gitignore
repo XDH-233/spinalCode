@@ -28,6 +28,7 @@ sim_build
 **/verdiLog
 novas.*
 *.fsdb
+*.rc
 ucli.key
 
 #python

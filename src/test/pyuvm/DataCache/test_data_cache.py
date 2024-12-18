@@ -135,4 +135,5 @@ async def address(dut):
     await cpu_write(dut, 8, 0x1234)
     await ClockCycles(dut.clk, MEM_READ_CYCLES)
     await cpu_read(dut, 0x200)
+    await cpu_read(dut, 0x208)
     await ClockCycles(dut.clk, 100)
