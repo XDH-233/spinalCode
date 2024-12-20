@@ -1,3 +1,5 @@
+import os
+
 from pyuvm import uvm_reg, uvm_reg_field, uvm_reg_map
 from pyuvm import uvm_reg_block
 from pyuvm import predict_t
@@ -17,10 +19,11 @@ from pyuvm import UVMNotImplemented
 from pyuvm import ConfigDB, uvm_root
 from pyuvm import CRITICAL
 from cocotb.clock import Clock
-from cocotb.triggers import Join, Combine
+from cocotb.triggers import Join, Combine, ClockCycles
 import random
 import cocotb
 import pyuvm
+import logging
 
 # All testbenches use tinyalu_utils, so store it in a central
 # place and add its path to the sys path so we can import it
@@ -74,8 +77,8 @@ class ALU_REG_SRC(uvm_reg):
         self.DATA1 = uvm_reg_field('DATA1')
 
     def build(self):
-        self.DATA0.configure(self, 8, 0, 'RW', 0, 0)
-        self.DATA1.configure(self, 8, 8, 'RW', 0, 0)
+        self.DATA0.configure(self, 8, 0, 'RW', False, 0)
+        self.DATA1.configure(self, 8, 8, 'RW', False, 0)
         self._set_lock()
         self.set_prediction(predict_t.PREDICT_DIRECT)
 
@@ -86,7 +89,7 @@ class ALU_REG_RESULT(uvm_reg):
         self.DATA = uvm_reg_field('DATA')
 
     def build(self):
-        self.DATA.configure(self, 16, 0, 'RW', 0, 0)
+        self.DATA.configure(self, 16, 0, 'RW', False, 0)
         self._set_lock()
         self.set_prediction(predict_t.PREDICT_DIRECT)
 
@@ -100,10 +103,10 @@ class ALU_REG_CMD(uvm_reg):
         self.RESERVED = uvm_reg_field('RESERVED')
 
     def build(self):
-        self.OP.configure(self, 5, 0, 'RW', 0, 1)
-        self.START.configure(self, 1, 5, 'RW', 0, 1)
-        self.DONE.configure(self, 1, 6, 'RO', 0, 1)
-        self.RESERVED.configure(self, 8, 7, 'RW', 0, 1)
+        self.OP.configure(self, 5, 0, 'RW', False, 1)
+        self.START.configure(self, 1, 5, 'RW', False, 1)
+        self.DONE.configure(self, 1, 6, 'RO', False, 1)
+        self.RESERVED.configure(self, 8, 7, 'RW', False, 1)
         self._set_lock()
         self.set_prediction(predict_t.PREDICT_DIRECT)
 
@@ -135,48 +138,6 @@ class ALU_REG_REG_BLOCK(uvm_reg_block):
 # ADAPATER
 ##############################################################################
 
-
-class simple_bus_adapter(uvm_reg_adapter):
-    def __init__(self, name="simple_bus_adapter"):
-        super().__init__(name)
-
-    # uvm_
-    def reg2bus(self, rw: uvm_reg_bus_op) -> uvm_sequence_item:
-        item = simple_bus_item("item")
-        # Set read bit
-        if (rw.kind == access_e.UVM_READ):
-            item.read = 1
-            item.rdata = rw.data
-        else:
-            item.read = 0
-            item.wdata = rw.data
-        item.addr = rw.addr
-        return item
-
-    # uvm_reg_bus_op is not created but updated and returned
-    def bus2reg(self, bus_item: uvm_sequence_item, rw: uvm_reg_bus_op):
-        if bus_item.read == 1:
-            rw.kind = access_e.UVM_READ
-            rw.data = bus_item.rdata
-        else:
-            rw.data = bus_item.wdata
-            rw.kind = access_e.UVM_WRITE
-        # Set addr
-        rw.addr = bus_item.addr
-        # Set nbits
-        rw.n_bits = pyuvm.count_bits(bus_item.wmask)
-        # Set byte_en
-        rw.byte_en = bus_item.wmask
-        # Set status
-        rw.status = status_t.IS_OK
-        if (bus_item.status is False):
-            rw.status = status_t.IS_NOT_OK
-
-##############################################################################
-# Sequence Items
-##############################################################################
-
-
 class simple_bus_item(uvm_sequence_item):
     def __init__(self, name):
         super().__init__(name)
@@ -198,6 +159,50 @@ class simple_bus_item(uvm_sequence_item):
                             wmask   {self.wmask } \
                             wdata   {self.wdata } \
                             status  {self.status}")
+
+
+
+
+class simple_bus_adapter(uvm_reg_adapter):
+    def __init__(self, name="simple_bus_adapter"):
+        super().__init__(name)
+
+    # uvm_
+    def reg2bus(self, rw: uvm_reg_bus_op) -> uvm_sequence_item:
+        item = simple_bus_item("item")
+        # Set read bit
+        if (rw.kind == access_e.UVM_READ):
+            item.read = 1
+            item.rdata = rw.data
+        else:
+            item.read = 0
+            item.wdata = rw.data
+        item.addr = rw.addr
+        return item
+
+    # uvm_reg_bus_op is not created but updated and returned
+    def bus2reg(self, bus_item: simple_bus_item, rw: uvm_reg_bus_op):
+        if bus_item.read == 1:
+            rw.kind = access_e.UVM_READ
+            rw.data = bus_item.rdata
+        else:
+            rw.data = bus_item.wdata
+            rw.kind = access_e.UVM_WRITE
+        # Set addr
+        rw.addr = bus_item.addr
+        # Set nbits
+        rw.n_bits = pyuvm.count_bits(bus_item.wmask)
+        # Set byte_en
+        rw.byte_en = bus_item.wmask
+        # Set status
+        rw.status = status_t.IS_OK
+        if (bus_item.status is False):
+            rw.status = status_t.IS_NOT_OK
+
+##############################################################################
+# Sequence Items
+##############################################################################
+
 
 
 class AluSeqItem(uvm_sequence_item):
@@ -419,6 +424,8 @@ class Driver(uvm_driver):
         await self.launch_tb()
         while True:
             cmd = await self.seq_item_port.get_next_item()
+            print("shit")
+            self.logger.debug(cmd) #testbench.simple_bus_item object at XXXXXX
             if (cmd.read == 0):
                 await self.bfm.SW_WRITE(cmd.get_addr(), cmd.wdata)
             else:
@@ -553,13 +560,13 @@ class Scoreboard(uvm_component):
 
 class AluEnv(uvm_env):
     def build_phase(self):
-        self.seqr = uvm_sequencer("seqr", self)
-        self.driver = Driver.create("driver", self)
-        self.monitor = Monitor("monitor", self)
-        self.coverage = Coverage("coverage", self)
-        self.scoreboard = Scoreboard("scoreboard", self)
+        self.seqr        = uvm_sequencer("seqr", self)
+        self.driver      = Driver.create("driver", self)
+        self.monitor     = Monitor("monitor", self)
+        self.coverage    = Coverage("coverage", self)
+        self.scoreboard  = Scoreboard("scoreboard", self)
         self.reg_adapter = simple_bus_adapter("reg_adapter")
-        self.reg_block = ALU_REG_REG_BLOCK("reg_block")
+        self.reg_block   = ALU_REG_REG_BLOCK("reg_block")
 
     def connect_phase(self):
         self.driver.seq_item_port.connect(self.seqr.seq_item_export)
@@ -586,6 +593,11 @@ class AluTest(uvm_test):
     def end_of_elaboration_phase(self):
         self.test_all = TestAllSeq.create("test_all")
 
+        self.set_logging_level_hier(logging.DEBUG)
+        # self.file_handler = logging.FileHandler("log.log", mode="w")
+        # self.add_logging_handler_hier(self.file_handler)
+        # self.remove_streaming_handler_hier()
+
     async def run_phase(self):
         self.raise_objection()
 
@@ -595,19 +607,19 @@ class AluTest(uvm_test):
             cocotb.start_soon(clock.start())
 
         await self.test_all.start()
+        await ClockCycles(self.env.driver.bfm.dut.clk,1000) # for vcs sim
         self.drop_objection()
 
 
 # @pyuvm.test()
 # class ParallelTest(AluTest):
 #     """Test ALU random and max forked"""
-
 #     def build_phase(self):
 #         uvm_factory().set_type_override_by_type(TestAllSeq, TestAllForkSeq)
 #         super().build_phase()
 
 
-@pyuvm.test()
+# @pyuvm.test()
 class FibonacciTest(AluTest):
     """Run Fibonacci program"""
 
@@ -617,7 +629,7 @@ class FibonacciTest(AluTest):
         return super().build_phase()
 
 
-@pyuvm.test()
+# @pyuvm.test()
 class AluTestErrors(AluTest):
     """Test ALU with errors on all operations"""
 

@@ -1,6 +1,6 @@
 CWD=$(shell pwd)
 export COCOTB_REDUCED_LOG_FMT = 1
-SIM ?= icarus
+SIM ?= verilator
 TOPLEVEL_LANG ?= verilog
 ifeq ($(TOPLEVEL_LANG),verilog)
 	VERILOG_SOURCES =$(CWD)/hdl/verilog/tinyalu.sv $(CWD)/hdl/verilog/TinyALUreg.sv
@@ -22,4 +22,4 @@ GHDL_ARGS := --ieee=synopsys
 COCOTB_HDL_TIMEUNIT = 1ns
 COCOTB_HDL_TIMEPRECISION = 1ps
 include $(shell cocotb-config --makefiles)/Makefile.sim
-include ../../checkclean.mk
+include ../checkclean.mk
