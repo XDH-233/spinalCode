@@ -1,17 +1,15 @@
-from cocotb.clock import Clock
-from cocotb.triggers import FallingEdge, ClockCycles, RisingEdge
-from cocotb.queue import QueueEmpty, Queue
 import enum
 
-from cocotb.utils import hexdump
-from pyuvm import *
 import pyuvm
-
+from cocotb.clock import Clock
+from cocotb.queue import Queue
+from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.utils import hexdump
 from cocotb_bus.drivers.avalon import AvalonSTPkts as AvalonSTDriver
-from  cocotb_bus.monitors.avalon import AvalonSTPkts as AvalonSTMonitor
+from cocotb_bus.monitors.avalon import AvalonSTPkts as AvalonSTMonitor
+from pyuvm import *
 
 from src.test.pyuvm.lib import *
-
 
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger()
@@ -25,7 +23,7 @@ class Ops(enum.IntEnum):
 
 
 class AvstSeqItem(uvm_sequence_item):
-    def __init__(self, name,data, channel, op):
+    def __init__(self, name, data, channel, op):
         super().__init__(name)
         self.data = data
         self.channel = channel
@@ -53,10 +51,11 @@ class AvstSeqItem(uvm_sequence_item):
 class DivideSeq(uvm_sequence):
     async def body(self):
         for _ in range(100):
-            cmd = AvstSeqItem("cmd", None, None,Ops.DIVIDE)
+            cmd = AvstSeqItem("cmd", None, None, Ops.DIVIDE)
             await self.start_item(cmd)
             cmd.randomize_data()
             await self.finish_item(cmd)
+
 
 class ExpandSeq(uvm_sequence):
     async def body(self):
@@ -66,6 +65,7 @@ class ExpandSeq(uvm_sequence):
             cmd.randomize_data()
             await self.finish_item(cmd)
 
+
 class TestAllSeq(uvm_sequence):
     async def body(self):
         seqr = ConfigDB().get(None, "", "SEQR")
@@ -74,6 +74,7 @@ class TestAllSeq(uvm_sequence):
         await divide.start(seqr)
         await expand.start(seqr)
 
+
 class AvstWidthCovBfm(metaclass=utility_classes.Singleton):
     def __init__(self):
         self.dut = cocotb.top
@@ -81,10 +82,14 @@ class AvstWidthCovBfm(metaclass=utility_classes.Singleton):
         # self.avst_d_out_mntr_queue = Queue(0)
         # self.avst_e_out_mntr_queue = Queue(0)
         self.avst_out_queue = Queue(0)
-        self.avst_divide_drv = AvalonSTDriver(self.dut, "avst_d_in", self.dut.clk, config={"firstSymbolInHighOrderBits": False})
-        self.avst_expand_drv = AvalonSTDriver(self.dut, "avst_e_in", self.dut.clk, config={"firstSymbolInHighOrderBits": False})
-        self.avst_d_out_mntr = AvalonSTMonitor(self.dut, "avst_d_out", self.dut.clk,config={"firstSymbolInHighOrderBits": False}, report_channel=True)
-        self.avst_e_out_mntr = AvalonSTMonitor(self.dut, "avst_e_out", self.dut.clk,config={"firstSymbolInHighOrderBits": False}, report_channel=True)
+        self.avst_divide_drv = AvalonSTDriver(self.dut, "avst_d_in", self.dut.clk,
+                                              config={"firstSymbolInHighOrderBits": False})
+        self.avst_expand_drv = AvalonSTDriver(self.dut, "avst_e_in", self.dut.clk,
+                                              config={"firstSymbolInHighOrderBits": False})
+        self.avst_d_out_mntr = AvalonSTMonitor(self.dut, "avst_d_out", self.dut.clk,
+                                               config={"firstSymbolInHighOrderBits": False}, report_channel=True)
+        self.avst_e_out_mntr = AvalonSTMonitor(self.dut, "avst_e_out", self.dut.clk,
+                                               config={"firstSymbolInHighOrderBits": False}, report_channel=True)
 
         self.avst_d_out_mntr.add_callback(self.avst_d_out_mntr_cb)
         self.avst_e_out_mntr.add_callback(self.avst_e_out_mntr_cb)
@@ -100,9 +105,8 @@ class AvstWidthCovBfm(metaclass=utility_classes.Singleton):
         self.dut.rst.value = 0
         await RisingEdge(self.dut.clk)
 
-
-    async def send_op(self, data,channel,op):
-        cmd_tuple = (data, channel,op)
+    async def send_op(self, data, channel, op):
+        cmd_tuple = (data, channel, op)
         await self.driver_queue.put(cmd_tuple)
 
     async def driver_bfm(self):
@@ -111,9 +115,9 @@ class AvstWidthCovBfm(metaclass=utility_classes.Singleton):
             try:
                 (data, channel, op) = self.driver_queue.get_nowait()
                 if op == Ops.DIVIDE:
-                    await self.avst_divide_drv._driver_send(pkt=data,channel=channel)
+                    await self.avst_divide_drv._driver_send(pkt=data, channel=channel)
                 elif op == Ops.EXPAND:
-                    await self.avst_expand_drv._driver_send(pkt=data,channel=channel)
+                    await self.avst_expand_drv._driver_send(pkt=data, channel=channel)
             except QueueEmpty:
                 pass
 
@@ -145,10 +149,11 @@ class Driver(uvm_driver):
     async def run_phase(self):
         await self.launch_tb()
         while True:
-            cmd = await self.seq_item_port.get_next_item() #FIXME: blocked
+            cmd = await self.seq_item_port.get_next_item()  # FIXME: blocked
             await self.bfm.send_op(cmd.data, cmd.channel, cmd.op)
             self.ap.write((cmd.data, cmd.channel, cmd.op))
             self.seq_item_port.item_done()
+
 
 class Monitor(uvm_component):
 
@@ -156,7 +161,7 @@ class Monitor(uvm_component):
         self.ap = uvm_analysis_port("ap", self)
         self.bfm = AvstWidthCovBfm()
 
-    async  def run_phase(self):
+    async def run_phase(self):
         while True:
             await RisingEdge(self.bfm.dut.clk)
             item_tup_mon = await self.bfm.avst_out_queue.get()
@@ -165,6 +170,7 @@ class Monitor(uvm_component):
             self.logger.info(f"Monitored {item_str}")
             self.logger.debug(hexdump(data))
             self.ap.write(item_tup_mon)
+
 
 class Scoreboard(uvm_component):
     def build_phase(self):
@@ -199,8 +205,7 @@ class Scoreboard(uvm_component):
                     self.logger.error(f"FAILED: OP_IN : {op_in.name}, CHANNEL_IN: 0x{channel_in:x}"
                                       f"FAILED: OP_OUT: {op_out.name}, CHANNEL_OUT: 0x{channel_out:x}")
                     passed = False
-        assert  passed
-
+        assert passed
 
 
 class AvstWidthCovEnv(uvm_env):
@@ -209,7 +214,7 @@ class AvstWidthCovEnv(uvm_env):
         self.seqr = uvm_sequencer("seqr", self)
         ConfigDB().set(None, "*", "SEQR", self.seqr)
         self.driver = Driver.create("driver", self)
-        self.monitor = Monitor.create("monitor",self)
+        self.monitor = Monitor.create("monitor", self)
         self.scoreboard = Scoreboard("scoreboard", self)
 
     def connect_phase(self):
@@ -236,11 +241,8 @@ class AvstWidthCovTest(uvm_test):
         self.env.driver.bfm.avst_d_out_mntr.log.addHandler(self.file_handler)
         self.env.driver.bfm.avst_e_out_mntr.log.addHandler(self.file_handler)
 
-
-
     async def run_phase(self):
         self.raise_objection()
         await self.test_all.start()
         await ClockCycles(self.env.driver.bfm.dut.clk, 1000)
         self.drop_objection()
-

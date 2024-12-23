@@ -1,12 +1,11 @@
+package demo
+
 import spinal.core._
-import spinal.lib._
 import spinal.core.sim._
-import spinal.lib.sim._
-import spinal.lib.bus.avalon.sim.AvalonSTDriver
+import spinal.lib._
 import spinal.lib.bus.avalon._
-import tool.BusExt.AvstExt
+import spinal.lib.sim._
 import tool.BusExt.StreamBundleExt
-import tool.BusExt.StreamExt
 
 import scala.language.postfixOps
 

@@ -1,9 +1,10 @@
+package demo
+
 import spinal.core._
 import spinal.core.sim._
-import spinal.lib.bus.avalon._
 import spinal.lib._
+import spinal.lib.bus.avalon._
 import tool.BusExt.AvstExt
-import tool.AvstExpand
 
 import scala.language.postfixOps
 

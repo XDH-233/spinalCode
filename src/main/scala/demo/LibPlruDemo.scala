@@ -1,19 +1,17 @@
-import spinal.core._
-import spinal.core.sim.currentTestName
-import spinal.lib.misc.Plru
-import spinal.lib._
-import spinal.lib.Delay
-import intel_ip.rdma_ctyun_sfifo._
-import org.jfree.chart.{ChartFactory, ChartPanel}
+package demo
+
 import org.jfree.chart.plot.PlotOrientation
+import org.jfree.chart.{ChartFactory, ChartPanel}
 import org.jfree.data.category.DefaultCategoryDataset
+import spinal.core._
+import spinal.lib.{Delay, _}
 import tool.PlruControl.plruControlFactory
+import tool.{Access, PlruControlFactory}
 
 import javax.swing._
-import scala.util.Random
 import scala.collection.mutable
 import scala.language.postfixOps
-import tool.{Access, PlruControl, PlruControlFactory}
+import scala.util.Random
 
 case class LibPlruDemo(val entries: Int = 8, aging_cycle: Int = 20, with_rpl_blk: Boolean = false) extends Component {
   val io = new Bundle {
@@ -40,7 +38,6 @@ case class LibPlruDemo(val entries: Int = 8, aging_cycle: Int = 20, with_rpl_blk
 }
 
 import spinal.core.sim._
-import scala.collection.mutable.Queue
 
 object LibPlruDemoSim extends App {
   SimConfig.withVerilator.withWave

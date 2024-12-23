@@ -1,15 +1,11 @@
 package tool
 
-import intel_ip.rdma_ctyun_sdpram
 import spinal.core._
 import spinal.lib.misc.Plru
 import spinal.lib._
-import rdma.rdma_vh._
-import spinal.core.sim.SimConfig
 
 import scala.collection.mutable
 import scala.language.postfixOps
-import scala.util.Random
 
 case class Access(num: Int) extends Bundle {
   val id:          UInt = UInt(log2Up(num) bits)

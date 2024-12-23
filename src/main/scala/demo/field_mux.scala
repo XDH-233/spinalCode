@@ -1,3 +1,5 @@
+package demo
+
 import spinal.core._
 import spinal.lib._
 import tool.GeneralConfig

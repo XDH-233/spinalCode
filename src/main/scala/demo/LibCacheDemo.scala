@@ -1,9 +1,10 @@
-import spinal.core.{ClockDomainConfig, Component, HIGH, SYNC, SpinalConfig, SpinalVerilog, SpinalVhdl}
+package demo
+
+import spinal.core.{ClockDomainConfig, Component, HIGH, SYNC, SpinalConfig}
 import spinal.lib.bus.avalon.AvalonMM
-import spinal.lib.{WrapWithReg, master, slave}
 import spinal.lib.cpu.riscv.impl.{DataCache, DataCacheConfig, DataCacheCpuBus}
 import spinal.lib.experimental.chisel.Bundle
-import tool.GeneralConfig.dateTimeString
+import spinal.lib.{master, slave}
 
 case class LibCacheDemo() extends Component {
 
