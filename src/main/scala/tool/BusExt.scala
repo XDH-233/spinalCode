@@ -3,6 +3,7 @@ package tool
 import org.slf4j.{Logger, LoggerFactory}
 import spinal.core._
 import spinal.lib._
+import spinal.lib.bus.amba4.axi.Axi4
 import spinal.lib.bus.avalon._
 
 import scala.language.postfixOps
@@ -229,6 +230,27 @@ object BusExt {
       }
 
       avst
+    }
+  }
+
+  implicit  class AXI4Ext(axi4:Axi4){
+    def setCocotbAxiNameStyle(): Unit ={
+      axi4.aw.payload.setPartialName("")
+      axi4.w.payload.setPartialName("")
+      axi4.b.payload.setPartialName("")
+      axi4.ar.payload.setPartialName("")
+      axi4.r.payload.setPartialName("")
+
+      Seq(
+        axi4.aw,
+        axi4.w,
+        axi4.b,
+        axi4.ar,
+        axi4.r).foreach{channel =>
+        channel.valid.setCompositeName(axi4, channel.name+"valid")
+        channel.ready.setCompositeName(axi4, channel.name+"ready")
+        channel.payload.elements. foreach{case(s,e) => e.setCompositeName(axi4, postfix = channel.name+e.name)}
+      }
     }
   }
 }

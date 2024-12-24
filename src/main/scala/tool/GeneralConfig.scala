@@ -2,6 +2,7 @@ package tool
 
 import spinal.core._
 import spinal.core.sim._
+
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -14,7 +15,7 @@ object GeneralConfig {
 
   // 将日期时间格式化为字符串
   val dateTimeString: String = now.format(formatter)
-  def rtlGenConfig(path: String = "./", prefix: String = ""): SpinalConfig = SpinalConfig(
+  def rtlGenConfig(path: String = "./", prefix: String = "", widthTime:Boolean=false): SpinalConfig = SpinalConfig(
     defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = HIGH),
     nameWhenByFile               = false,
     anonymSignalPrefix           = "tmp",
@@ -24,7 +25,7 @@ object GeneralConfig {
     globalPrefix                 = prefix,
     withTimescale                = false,
 //    svInterface                  = true,
-    rtlHeader                    = s"Gen time  : $dateTimeString"
+    rtlHeader                    = if (widthTime) s"Gen time  : $dateTimeString" else ""
   )
 
   val spinalSimConfig: SpinalConfig = SpinalConfig(

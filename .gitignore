@@ -33,3 +33,5 @@ ucli.key
 
 #python
 **/__pycache__
+
+iverilog_dump.v
