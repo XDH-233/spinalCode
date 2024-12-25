@@ -1,10 +1,11 @@
+import itertools
 import logging
 import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
-from cocotbext.axi import AxiBus, AxiMaster, AxiRam
+from cocotb.triggers import RisingEdge, Timer, ClockCycles
+from cocotbext.axi import AxiBus, AxiMaster, AxiRam, AxiStreamSource, AxiStreamBus, AxiStreamFrame
 
 
 class TB:
@@ -18,6 +19,8 @@ class TB:
 
         self.axi_master = AxiMaster(AxiBus.from_prefix(dut, "axi4_s"), dut.clk, dut.reset)
         self.axi_ram = AxiRam(AxiBus.from_prefix(dut, "axi4_s"), dut.clk, dut.reset, size=2 ** 16)
+
+        self.source = AxiStreamSource(AxiStreamBus.from_prefix(dut,"axi4s_s"), dut.clk, dut.reset)
 
         self.axi_ram.write_if.log.setLevel(logging.DEBUG)
         self.axi_ram.read_if.log.setLevel(logging.DEBUG)
@@ -50,7 +53,7 @@ class TB:
         await RisingEdge(self.dut.clk)
 
 
-@cocotb.test()
+# @cocotb.test()
 async def run_test_write(dut):
     idle_inserter = None
     backpressure_inserter = None
@@ -260,71 +263,69 @@ async def run_stress_test(dut, idle_inserter=None, backpressure_inserter=None):
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
 
-# def cycle_pause():
-#     return itertools.cycle([1, 1, 1, 0])
-#
-#
-# if cocotb.SIM_NAME:
-#
-#     data_width = len(cocotb.top.axi_wdata)
-#     byte_lanes = data_width // 8
-#     max_burst_size = (byte_lanes-1).bit_length()
-#
-#     for test in [run_test_write, run_test_read]:
-#
-#         factory = TestFactory(test)
-#         factory.add_option("idle_inserter", [None, cycle_pause])
-#         factory.add_option("backpressure_inserter", [None, cycle_pause])
-#         factory.add_option("size", [None]+list(range(max_burst_size)))
-#         factory.generate_tests()
-#
-#     for test in [run_test_write_words, run_test_read_words]:
-#
-#         factory = TestFactory(test)
-#         factory.generate_tests()
-#
-#     factory = TestFactory(run_stress_test)
-#     factory.generate_tests()
-#
-#
-# # cocotb-test
-#
-# tests_dir = os.path.dirname(__file__)
-#
-#
-# @pytest.mark.parametrize("data_width", [8, 16, 32])
-# def test_axi(request, data_width):
-#     dut = "test_axi"
-#     module = os.path.splitext(os.path.basename(__file__))[0]
-#     toplevel = dut
-#
-#     verilog_sources = [
-#         os.path.join(tests_dir, f"{dut}.v"),
-#     ]
-#
-#     parameters = {}
-#
-#     parameters['DATA_WIDTH'] = data_width
-#     parameters['ADDR_WIDTH'] = 32
-#     parameters['STRB_WIDTH'] = parameters['DATA_WIDTH'] // 8
-#     parameters['ID_WIDTH'] = 8
-#     parameters['AWUSER_WIDTH'] = 1
-#     parameters['WUSER_WIDTH'] = 1
-#     parameters['BUSER_WIDTH'] = 1
-#     parameters['ARUSER_WIDTH'] = 1
-#     parameters['RUSER_WIDTH'] = 1
-#
-#     extra_env = {f'PARAM_{k}': str(v) for k, v in parameters.items()}
-#
-#     sim_build = os.path.join(tests_dir, "sim_build",
-#                              request.node.name.replace('[', '-').replace(']', ''))
-#
-#     cocotb_test.simulator.run(
-#         python_search=[tests_dir],
-#         verilog_sources=verilog_sources,
-#         toplevel=toplevel,
-#         module=module,
-#         parameters=parameters,
-#         sim_build=sim_build,
-#         extra_env=extra_env,
-#     )
+@cocotb.test()
+async def write_smoke(dut):
+    idle_inserter = None
+    backpressure_inserter = None
+    size = None
+
+    tb = TB(dut)
+
+    byte_lanes = tb.axi_master.write_if.byte_lanes
+    max_burst_size = tb.axi_master.write_if.max_burst_size
+
+    if size is None:
+        size = max_burst_size
+
+    await tb.cycle_reset()
+
+    tb.set_idle_generator(idle_inserter)
+    tb.set_backpressure_generator(backpressure_inserter)
+    offset = 0
+    #----------------------------------------Narrow Transfer------------------------------------------#
+    addr = 0 + 0x1000
+    length = random.randint(1, 100) #bytes
+    test_data = bytearray([x % 256 for x in range(length)])
+    burst_size = 0 #random.randint(0,2)
+    await tb.axi_master.write(addr, test_data, size=burst_size)  # write dut
+
+    #--------------------------------------Unaligned Transfer-----------------------------------------#
+    addr = 2 + 0x1000
+    length = random.randint(1, 100) #bytes
+    test_data = bytearray([x % 256 for x in range(length)])
+    burst_size = 2 #random.randint(0,2)
+    await tb.axi_master.write(addr, test_data, size=burst_size)  # write dut
+
+    await  ClockCycles(dut.clk, 100)
+
+def incrementing_payload(length):
+    return bytearray(itertools.islice(itertools.cycle(range(256)), length))
+
+def size_list():
+    data_width = len(cocotb.top.axi4s_s_tdata)
+    byte_width = data_width // 8
+    return list(range(1, byte_width*4+1)) + [512] + [1]*64
+
+@cocotb.test()
+async def axi_stream_smoke(dut):
+    tb = TB(dut)
+
+    id_count = 2**len(tb.source.bus.tid)
+
+    cur_id = 1
+
+    await tb.cycle_reset()
+    idle_inserter = None
+    backpressure_inserter = None
+    tb.set_idle_generator(idle_inserter)
+    tb.set_backpressure_generator(backpressure_inserter)
+
+    test_frames = []
+    payload_lengths = size_list()
+    for test_data in [incrementing_payload(x) for x in payload_lengths]:
+        test_frame = AxiStreamFrame(test_data)
+        test_frame.tid = cur_id
+        test_frame.tdest = cur_id
+        await tb.source.send(test_frame)
+        cur_id = (cur_id + 1) % id_count
+    await  ClockCycles(dut.clk, 500)

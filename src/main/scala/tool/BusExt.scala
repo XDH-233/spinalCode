@@ -4,6 +4,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.Axi4
+import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4Stream
 import spinal.lib.bus.avalon._
 
 import scala.language.postfixOps
@@ -251,6 +252,15 @@ object BusExt {
         channel.ready.setCompositeName(axi4, channel.name+"ready")
         channel.payload.elements. foreach{case(s,e) => e.setCompositeName(axi4, postfix = channel.name+e.name)}
       }
+    }
+  }
+
+  implicit class AXI4SExt(axi4s: Axi4Stream){
+    def setCocotbAxisNameStyle(): Unit ={
+      axi4s.payload.setPartialName("")
+      axi4s.valid.setCompositeName(axi4s, postfix = "tvalid")
+      axi4s.ready.setCompositeName(axi4s, postfix = "tready")
+      axi4s.payload.elements.foreach{case(s,e) => e.setCompositeName(axi4s, postfix = "t"+e.name)}
     }
   }
 }

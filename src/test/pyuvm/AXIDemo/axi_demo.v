@@ -1,6 +1,6 @@
 // Generator : SpinalHDL v1.10.2    git head : 279867b771fb50fc0aec21d8a20d8fdad0f87e3f
 // Component : axi_demo
-// Git hash  : 009989a4a162ae6ed46680114c230e5bc7ecc6d0
+// Git hash  : af0d60eb8c22f7115e468e50ab7b4b15c9403ce6
 // 
 
 
@@ -35,9 +35,12 @@ module axi_demo (
   output wire [2:0]    axi4_s_rid,
   output wire [1:0]    axi4_s_rresp,
   output wire          axi4_s_rlast,
-  input  wire          axi4s_s_valid,
-  output wire          axi4s_s_ready,
-  input  wire [255:0]  axi4s_s_payload_data,
+  input  wire          axi4s_s_tvalid,
+  output wire          axi4s_s_tready,
+  input  wire [31:0]   axi4s_s_tdata,
+  input  wire [7:0]    axi4s_s_tid,
+  input  wire [3:0]    axi4s_s_tkeep,
+  input  wire          axi4s_s_tlast,
   input  wire          clk,
   input  wire          reset
 );
@@ -52,11 +55,11 @@ module axi_demo (
   assign axi4_s_awready = 1'b1; // @ Bool.scala l90
   assign axi4_s_wready = 1'b1; // @ Bool.scala l90
   assign axi4_s_w_fire = (axi4_s_wvalid && axi4_s_wready); // @ BaseType.scala l305
-  assign axi4_s_bvalid = tmp_axi4_s_bvalid; // @ AXIDemo.scala l24
+  assign axi4_s_bvalid = tmp_axi4_s_bvalid; // @ AXIDemo.scala l23
   assign tmp_axi4_s_bid = 5'h0; // @ BitVector.scala l494
   always @(*) begin
     axi4_s_bid = tmp_axi4_s_bid[2 : 0]; // @ UInt.scala l381
-    axi4_s_bid = axi4_s_awid_regNext; // @ AXIDemo.scala l27
+    axi4_s_bid = axi4_s_awid_regNext; // @ AXIDemo.scala l26
   end
 
   assign axi4_s_bresp = tmp_axi4_s_bid[4 : 3]; // @ Bits.scala l133
@@ -67,7 +70,7 @@ module axi_demo (
   assign axi4_s_rid = tmp_axi4_s_rdata[34 : 32]; // @ UInt.scala l381
   assign axi4_s_rresp = tmp_axi4_s_rdata[36 : 35]; // @ Bits.scala l133
   assign axi4_s_rlast = tmp_axi4_s_rdata[37]; // @ Bool.scala l209
-  assign axi4s_s_ready = 1'b1; // @ Bool.scala l90
+  assign axi4s_s_tready = 1'b1; // @ Bool.scala l90
   assign reg_1 = 1'b0;
   always @(posedge clk) begin
     if(reset) begin
