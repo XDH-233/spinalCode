@@ -5,7 +5,8 @@ import random
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer, ClockCycles
-from cocotbext.axi import AxiBus, AxiMaster, AxiRam, AxiStreamSource, AxiStreamBus, AxiStreamFrame
+from cocotbext.axi import AxiBus, AxiMaster, AxiRam, AxiStreamSource, AxiStreamBus, AxiStreamFrame, AxiLiteMaster, \
+    AxiLiteBus, AxiStreamSink
 
 
 class TB:
@@ -21,6 +22,9 @@ class TB:
         self.axi_ram = AxiRam(AxiBus.from_prefix(dut, "axi4_s"), dut.clk, dut.reset, size=2 ** 16)
 
         self.source = AxiStreamSource(AxiStreamBus.from_prefix(dut,"axi4s_s"), dut.clk, dut.reset)
+        self.sink = AxiStreamSink(AxiStreamBus.from_prefix(dut, "axi4s_s"), dut.clk, dut.reset)
+
+        self.axil_master = AxiLiteMaster(AxiLiteBus.from_prefix(dut,"axil_s"), dut.clk, dut.reset)
 
         self.axi_ram.write_if.log.setLevel(logging.DEBUG)
         self.axi_ram.read_if.log.setLevel(logging.DEBUG)
@@ -329,3 +333,23 @@ async def axi_stream_smoke(dut):
         await tb.source.send(test_frame)
         cur_id = (cur_id + 1) % id_count
     await  ClockCycles(dut.clk, 500)
+
+
+@cocotb.test()
+async def axilite_smoke(dut):
+    tb = TB(dut)
+
+    idle_inserter = None
+    backpressure_inserter = None
+    await tb.cycle_reset()
+
+    tb.set_idle_generator(idle_inserter)
+    tb.set_backpressure_generator(backpressure_inserter)
+
+    dead_int = 0xdead
+    dead_bytes = dead_int.to_bytes(2,"little")
+    await tb.axil_master.read(2,0x2)
+    await tb.axil_master.write(0,dead_bytes)
+    await tb.axil_master.read(2,0x2)
+
+    await ClockCycles(dut.clk,100)
