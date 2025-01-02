@@ -21,28 +21,29 @@ case class TlpIf(hdrWidth: Int, dataWidth: Int = -1, seqNumWidth: Int = -1, with
 
 case class TlpHeader() extends Bundle { // big endian
   import PCIe.PcieUsConfig.TlpFmt
-  val byte12_15_vary_with_type = Bits(32 bits) // DW3
-  val bytes8_11_vary_with_type = Bits(32 bits) // DW2
-  val first_dw_be              = Bits(4 bits) // DW1
-  val last_dw_be               = Bits(4 bits)
-  val bytes4_7_vary_with_type  = Bits(24 bits)
-  val length                   = Bits(10 bits) // DW0 byte0
-  val at                       = Bits(2 bits) // DW0 byte1
-  val attr_l                   = Bits(2 bits)
-  val ep                       = Bool()
-  val td                       = Bool()
-  val th                       = Bool() // DW0 byte2
-  val rsv2                     = Bits(1 bits)
-  val attr_h                   = Bits(1 bits)
-  val rsv1                     = Bits(1 bits)
-  val tc                       = Bits(3 bits)
-  val rsv0                     = Bits(1 bits)
-  val type_                    = Bits(5 bits) // DW0 byte3
-  val fmt                      = TlpFmt()
+  val ph           = Bits(2 bits)
+  val address      = Bits(62 bits)
+  val first_dw_be  = Bits(4 bits) // DW1
+  val last_dw_be   = Bits(4 bits)
+  val tag          = Bits(8 bits)
+  val requested_id = UInt(16 bits)
+  val length       = Bits(10 bits) // DW0 byte0
+  val at           = Bits(2 bits) // DW0 byte1
+  val attr_l       = Bits(2 bits)
+  val ep           = Bool()
+  val td           = Bool()
+  val th           = Bool() // DW0 byte2
+  val rsv2         = Bits(1 bits)
+  val attr_h       = Bits(1 bits)
+  val rsv1         = Bits(1 bits)
+  val tc           = Bits(3 bits)
+  val rsv0         = Bits(1 bits)
+  val type_        = Bits(5 bits) // DW0 byte3
+  val fmt          = TlpFmt()
 
 }
 
-case class RqUser() extends Bundle { //512
+case class CqUser() extends Bundle { //512
   val first_be    = Bits(8 bits)
   val last_be     = Bits(8 bits)
   val byte_en     = Bits(64 bits)
@@ -59,20 +60,20 @@ case class RqUser() extends Bundle { //512
   val parity      = Bits(64 bits)
 }
 
-case class AxisCqTlpHeader() extends Bundle{
-  val at = Bits(2 bits)
-  val address = Bits( 62 bits)
-  val length = Bits(11 bits)
-  val fmt_type = Bits(4 bits)
-  val rsv0 = Bool()
-  val requester_id = UInt(16 bits)
-  val tag = Bits(8 bits)
-  val func_num = UInt(8 bits)
-  val bar_id = UInt(3 bits) // 112
-  val rsv1 = Bits(8 bits)
-  val tc = Bits(3 bits) // 121
-  val attr_l = Bits(2 bits) // 124
-  val attr_h = Bits( 1 bits)
+case class AxisCqDescriptor() extends Bundle { // 512 bits cq, Memory, I/O, and Atomic Operation
+  val address_type    = Bits(2 bits)
+  val address         = Bits(62 bits)
+  val dword_count     = Bits(11 bits)
+  val request_type    = Bits(4 bits)
+  val rsv0            = Bits(1 bits)
+  val requester_id    = UInt(16 bits) // Bus and Device/function
+  val tag             = Bits(8 bits)
+  val target_function = UInt(8 bits)
+  val bar_id          = UInt(3 bits)
+  val bar_aperture    = Bits(6 bits)
+  val tc              = Bits(3 bits)
+  val attr            = Bits(3 bits)
+  val rsv1            = Bits(1 bits)
 
 }
 
@@ -132,26 +133,30 @@ case class pcie_us_if(pcieUsConfig: PcieUsConfig) extends Component {
 
 case class pcie_us_if_cq(pcieUsConfig: PcieUsConfig) extends Component {
   import PcieUsConfig._
-  import pcieUsConfig._
+import pcieUsConfig._
   val io = new Bundle {
     val s_axis_cq  = slave(Axi4Stream(cqAxisConfig))
     val rx_req_tlp = Vec.fill(tlpSegCount)(master Stream (TlpIf(hdrWidth, tlpSegDataWidth, withBar = true)))
 
   }
 
-  val tlp_hdr:         Vec[TlpHeader] = Vec.fill(intTlpSegCount)(TlpHeader())
-  val tlp_bar_id:      Vec[UInt]      = Vec.fill(intTlpSegCount)(UInt(3 bits))
-  val tlp_func_num:    Vec[UInt]      = Vec.fill(intTlpSegCount)(UInt(8 bits))
-  val cq_data:         Bits           = io.s_axis_cq.data
-  val cq_data_int_reg: Bits           = RegNextWhen(io.s_axis_cq.data, io.s_axis_cq.fire)
-  val cq_data_full:    Bits           = cq_data ## cq_data_int_reg
+  val tlp_hdr:      Vec[TlpHeader] = Vec.fill(intTlpSegCount)(TlpHeader())
+  val tlp_bar_id:   Vec[UInt]      = Vec.fill(intTlpSegCount)(UInt(3 bits))
+  val tlp_func_num: Vec[UInt]      = Vec.fill(intTlpSegCount)(UInt(8 bits))
+  val cq_data:      Bits           = io.s_axis_cq.data
+  val cq_hdr_be = Bits(intTlpSegCount * 8 bits)
+//  val
+  val cq_data_int_reg: Bits = RegNextWhen(io.s_axis_cq.data, io.s_axis_cq.fire)
+  val cq_data_full:    Bits = cq_data ## cq_data_int_reg
 
   val paser_header = for (seg <- 0 until intTlpSegCount) yield new Area {
-    val cq_data_fmt = TxWrOpcode()
+    val cq_data_fmt     = TxWrOpcode()
+    val axisCqTlpHeader = AxisCqDescriptor()
     cq_data_fmt := cq_data_full(intTlpSegDataWidth * seg + 75, 4 bits)
+    axisCqTlpHeader.assignFromBits(cq_data_full(intTlpSegDataWidth * seg, 7 bits))
     switch(cq_data_fmt) {
       is(TxWrOpcode.REQ_MEM_READ) {
-        tlp_hdr(seg).fmt := TlpFmt.FMT_4DW
+        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW
         tlp_hdr(seg).type_ := 0
       }
       is(TxWrOpcode.REQ_MEM_WRITE) {}
@@ -170,6 +175,10 @@ case class pcie_us_if_cq(pcieUsConfig: PcieUsConfig) extends Component {
       is(TxWrOpcode.REQ_MSG_ATS) {}
 
     }
+    tlp_hdr(seg).length := axisCqTlpHeader.dword_count
+//    tlp_hdr(seg).first_dw_be := axisCqTlpHeader.f
+    tlp_hdr(seg).address := axisCqTlpHeader.address
+    tlp_hdr(seg).ph      := 0
   }
 
 }
