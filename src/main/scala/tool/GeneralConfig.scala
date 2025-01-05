@@ -2,6 +2,7 @@ package tool
 
 import spinal.core._
 import spinal.core.sim._
+import spinal.sim.VCSFlags
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -37,4 +38,10 @@ object GeneralConfig {
   val verilatorSimConfig: SpinalSimConfig = SimConfig.withWave
 //    .addSimulatorFlag("-sv -Wno-INITIALDLY -Wno-COMBDLY -Wno-MULTIDRIVEN -Wno-PINMISSING -Wno-MISINDENT -Wno-BLKANDNBLK")
     .withConfig(spinalSimConfig)
+
+
+  val vcsFlags = VCSFlags(
+    compileFlags = List("-kdb"),
+    elaborateFlags = List("-LDFLAGS -Wl,--no-as-needed")
+  )
 }

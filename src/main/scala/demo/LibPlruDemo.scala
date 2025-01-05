@@ -9,6 +9,7 @@ import tool.PlruControl.plruControlFactory
 import tool.{Access, PlruControlFactory}
 
 import javax.swing._
+import javax.swing.WindowConstants._
 import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.Random
@@ -134,7 +135,7 @@ object LibPlruDemoSim extends App {
 //     创建并显示图表面板
       val chartPanel = new ChartPanel(chart)
       val frame      = new JFrame("Bar Chart Example")
-      frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
+      frame.setDefaultCloseOperation(EXIT_ON_CLOSE)
       frame.add(chartPanel)
       frame.pack()
       frame.setVisible(true)

@@ -27,12 +27,12 @@ case class TlpHeader() extends Bundle { // big endian
   val last_dw_be   = Bits(4 bits)
   val tag          = Bits(8 bits)
   val requested_id = UInt(16 bits)
-  val length       = Bits(10 bits) // DW0 byte0
+  val length       = UInt(10 bits) // DW0 byte0
   val at           = Bits(2 bits) // DW0 byte1
   val attr_l       = Bits(2 bits)
-  val ep           = Bool()
-  val td           = Bool()
-  val th           = Bool() // DW0 byte2
+  val ep           = Bits(1 bits)
+  val td           = Bits(1 bits)
+  val th           = Bits(1 bits) // DW0 byte2
   val rsv2         = Bits(1 bits)
   val attr_h       = Bits(1 bits)
   val rsv1         = Bits(1 bits)
@@ -48,11 +48,9 @@ case class CqUser() extends Bundle { //512
   val last_be     = Bits(8 bits)
   val byte_en     = Bits(64 bits)
   val is_sop      = Bits(2 bits)
-  val is_sop0_ptr = Bits(2 bits)
-  val is_sop1_ptr = Bits(2 bits)
+  val is_sop_ptr  = Vec.fill(2)(Bits(2 bits)) // FIXME: may cause err for vec reverse
   val is_eop      = Bits(2 bits)
-  val is_eop0_ptr = Bits(4 bits)
-  val is_eop1_ptr = Bits(4 bits)
+  val is_eop_ptr  = Vec.fill(2)(Bits(2 bits))
   val discontinue = Bool()
   val tph_present = Bits(2 bits)
   val tph_type    = Bits(4 bits)
@@ -97,6 +95,7 @@ case class PcieUsConfig(axisPcieDataWidth: Int) {
   val ccAxisConfig: Axi4StreamConfig = Axi4StreamConfig(dataWidth = axisPcieDataWidth, useLast = true, useUser = true, userWidth = ccUsrWidth)
 
   val tlpDataWidth: Int = axisPcieDataWidth
+  val tlpStrbWidth: Int = tlpDataWidth / 32
   val hdrWidth    = 128
   val tlpSegCount = 1
   val tlpSegDataWidth: Int = tlpDataWidth / tlpSegCount
@@ -106,6 +105,7 @@ case class PcieUsConfig(axisPcieDataWidth: Int) {
 
   val intTlpSegCount:     Int = if (axisPcieDataWidth >= 512) 2 else 1 // cq_straddle default
   val intTlpSegDataWidth: Int = tlpDataWidth / intTlpSegCount
+  val intTlpSegStrbWidth: Int = tlpStrbWidth / intTlpSegCount
 }
 
 object PcieUsConfig {
@@ -156,13 +156,26 @@ case class pcie_us_if_cq(pcieUsConfig: PcieUsConfig) extends Component {
   val axis_cq_users:   Vec[CqUser]    = Vec.fill(intTlpSegCount)(CqUser())
   val cq_data_int_reg: Bits           = RegNextWhen(io.s_axis_cq.data, io.s_axis_cq.fire)
   val cq_data_full:    Bits           = cq_data ## cq_data_int_reg
+  val cq_strb:         Bits           = Bits(tlpStrbWidth bits)
+  val cq_strb_reg:     Bits           = RegNextWhen(cq_strb, io.s_axis_cq.fire)
+  val cq_strb_full:    Bits           = cq_strb ## cq_strb_reg
+  val valid:           Bool           = Bool()
+  val cq_strb_sop:     Bits           = Bits(tlpStrbWidth bits)
 
-  val rx_req_tlp_data: Bits = Bits(tlpDataWidth bits)
+  val rx_req_tlp_data: Vec[Bits] = Vec.fill(tlpSegCount)(Bits(intTlpSegDataWidth bits))
+  val rx_req_tlp_strb: Vec[Bits] = Vec.fill(tlpSegCount)(Bits(intTlpSegStrbWidth bits))
+
+  if (axisPcieDataWidth >= 512) { // and cq_straddle
+    val sop_proc_512 = for (seg <- 0 until intTlpSegCount) yield new Area {
+      when(axis_cq_users.head.is_sop(seg)) {}
+    }
+
+  } else {}
 
   val paser_header = for (seg <- 0 until intTlpSegCount) yield new Area {
     val cq_data_fmt        = ReqType()
     val axis_cq_tlp_desctr = AxisCqDescriptor()
-    cq_data_fmt := cq_data_full(intTlpSegDataWidth * seg + 75, 4 bits)
+    cq_data_fmt.assignFromBits(cq_data_full(intTlpSegDataWidth * seg + 75, 4 bits))
     axis_cq_tlp_desctr.assignFromBits(cq_data_full(intTlpSegDataWidth * seg, 7 bits))
     switch(cq_data_fmt) {
       is(ReqType.REQ_MEM_READ) {
@@ -251,7 +264,11 @@ case class pcie_us_if_cq(pcieUsConfig: PcieUsConfig) extends Component {
 
   if (tlpDataWidth == 64) {} else {
     val greater_64 = for (seg <- 0 until intTlpSegCount) yield new Area {
-
+      rx_req_tlp_data(seg) := cq_data_full >> (128 + seg * intTlpSegDataWidth)
+      when(axis_cq_users(0).is_sop(seg)){
+        
+      }
+      // rx_req_tlp_strb(seg) := 
     }
   }
 

@@ -1,6 +1,6 @@
 CWD=$(shell pwd)
 export COCOTB_REDUCED_LOG_FMT = 1
-SIM ?= verilator
+SIM ?= vcs
 WAVES=1
 
 export RANDOM_SEED := 123456789
@@ -40,7 +40,7 @@ GHDL_ARGS := --ieee=synopsys
 # COCOTB_HDL_TIMEUNIT = 1us
 # COCOTB_HDL_TIMEPRECISION = 1us
 
-# include ../../checkclean.mk
+include ../checkclean.mk
 
 all: clean sim
 
