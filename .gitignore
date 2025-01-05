@@ -35,3 +35,4 @@ ucli.key
 **/__pycache__
 
 iverilog_dump.v
+combined_results.xml
