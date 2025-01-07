@@ -2,21 +2,32 @@ package PCIe
 
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
+import spinal.lib.bus.amba4.axis.{Axi4StreamConfig}
 
 import scala.language.postfixOps
 
-case class TlpIf(hdrWidth: Int, dataWidth: Int = -1, seqNumWidth: Int = -1, withBar: Boolean = false, withErr: Boolean = false) extends Bundle {
+//case class Axi4StreamXilinxCfg(dataWidth: Int) {}
 
-  val data     = dataWidth > 0 generate Bits(dataWidth bits)
-  val strb     = dataWidth > 0 generate Bits((dataWidth + 32) / 32 bits)
-  val hdr      = Bits(hdrWidth bits)
-  val bar_id   = withBar generate UInt(3 bits)
-  val func_num = withBar generate UInt(8 bits)
-  val error    = withErr generate Bool()
-  val seq      = seqNumWidth > 0 generate UInt(seqNumWidth bits)
-  val sop      = Bool()
-  val eop      = Bool()
+case class Axi4StreamXilinx(dataWidth: Int, userWidth: Int) extends Bundle {
+  val tdata: Bits = Bits(dataWidth bits)
+  val tkeep: Bits = Bits(dataWidth / 32 bits)
+  val tlast: Bool = Bool()
+  val tuser: Bits = Bits(userWidth bits)
+}
+
+case class TlpIfConfig( dataWidth: Int = -1, seqNumWidth: Int = -1, withBar: Boolean = false, withErr: Boolean = false)
+
+case class TlpIf(tlpIfConfig: TlpIfConfig) extends Bundle {
+  import tlpIfConfig._
+  val data:     Bits      = dataWidth > 0 generate Bits(dataWidth bits)
+  val strb:     Bits      = dataWidth > 0 generate Bits((dataWidth + 32) / 32 bits)
+  val hdr:      TlpHeader = TlpHeader()
+  val bar_id:   UInt      = withBar generate UInt(3 bits)
+  val func_num: UInt      = withBar generate UInt(8 bits)
+  val error:    Bool      = withErr generate Bool()
+  val seq:      UInt      = seqNumWidth > 0 generate UInt(seqNumWidth bits)
+  val sop:      Bool      = Bool()
+  val eop:      Bool      = Bool()
 }
 
 case class TlpHeader() extends Bundle { // big endian
@@ -43,19 +54,20 @@ case class TlpHeader() extends Bundle { // big endian
 
 }
 
-case class CqUser() extends Bundle { //512
-  val first_be    = Bits(8 bits)
-  val last_be     = Bits(8 bits)
-  val byte_en     = Bits(64 bits)
-  val is_sop      = Bits(2 bits)
-  val is_sop_ptr  = Vec.fill(2)(Bits(2 bits)) // FIXME: may cause err for vec reverse
-  val is_eop      = Bits(2 bits)
-  val is_eop_ptr  = Vec.fill(2)(Bits(2 bits))
-  val discontinue = Bool()
-  val tph_present = Bits(2 bits)
-  val tph_type    = Bits(4 bits)
-  val tph_st_tag  = Bits(16 bits)
-  val parity      = Bits(64 bits)
+case class CqUser(DW: Int = 512) extends Bundle { // pg213, p23 and p35
+  val first_be:    Bits      = if (DW == 512) Bits(8 bits) else Bits(4 bits)
+  val last_be:     Bits      = if (DW == 512) Bits(8 bits) else Bits(4 bits)
+  val byte_en:     Bits      = if (DW == 512) Bits(64 bits) else Bits(32 bits)
+  val is_sop:      Bits      = if (DW == 512) Bits(2 bits) else Bits(1 bits)
+  val is_sop_ptr:  Vec[UInt] = (DW == 512) generate Vec.fill(2)(UInt(2 bits)) // FIXME: may cause err for vec reverse
+  val is_eop:      Bits      = (DW == 512) generate Bits(2 bits)
+  val is_eop_ptr:  Vec[UInt] = (DW == 512) generate Vec.fill(2)(UInt(4 bits))
+  val discontinue: Bool      = Bool()
+  val tph_present: Bits      = if (DW == 512) Bits(2 bits) else Bits(1 bits)
+  val tph_type:    Bits      = if (DW == 512) Bits(4 bits) else Bits(2 bits)
+  val tph_st_tag:  Bits      = if (DW == 512) Bits(16 bits) else Bits(8 bits)
+  val parity:      Bits      = if (DW == 512) Bits(64 bits) else Bits(32 bits)
+  val rsv:         Bits      = (DW < 512) generate Bits(3 bits)
 }
 
 object CqUser {
@@ -89,14 +101,8 @@ case class PcieUsConfig(axisPcieDataWidth: Int) {
   val cqUsrWidth: Int = if (axisPcieDataWidth < 512) 85 else 183
   val ccUsrWidth: Int = if (axisPcieDataWidth < 512) 33 else 81
 
-  val rcAxisConfig: Axi4StreamConfig = Axi4StreamConfig(dataWidth = axisPcieDataWidth, useLast = true, useUser = true, userWidth = rcUsrWidth)
-  val rqAxisConfig: Axi4StreamConfig = Axi4StreamConfig(dataWidth = axisPcieDataWidth, useLast = true, useUser = true, userWidth = rqUsrWidth)
-  val cqAxisConfig: Axi4StreamConfig = Axi4StreamConfig(dataWidth = axisPcieDataWidth, useLast = true, useUser = true, userWidth = cqUsrWidth)
-  val ccAxisConfig: Axi4StreamConfig = Axi4StreamConfig(dataWidth = axisPcieDataWidth, useLast = true, useUser = true, userWidth = ccUsrWidth)
-
   val tlpDataWidth: Int = axisPcieDataWidth
   val tlpStrbWidth: Int = tlpDataWidth / 32
-  val hdrWidth    = 128
   val tlpSegCount = 1
   val tlpSegDataWidth: Int = tlpDataWidth / tlpSegCount
   val rqSeqNumWidth:   Int = if (rqUsrWidth == 60) 4 else 6
@@ -106,6 +112,14 @@ case class PcieUsConfig(axisPcieDataWidth: Int) {
   val intTlpSegCount:     Int = if (axisPcieDataWidth >= 512) 2 else 1 // cq_straddle default
   val intTlpSegDataWidth: Int = tlpDataWidth / intTlpSegCount
   val intTlpSegStrbWidth: Int = tlpStrbWidth / intTlpSegCount
+
+  val rxReqTlpCfg:    TlpIfConfig = TlpIfConfig( tlpSegDataWidth, withErr = true)
+  val rxCplTlpCfg:    TlpIfConfig = TlpIfConfig( tlpSegDataWidth, withErr = true)
+  val txRdReqTlpCfg:  TlpIfConfig = TlpIfConfig()
+  val txWrReqTlpCfg:  TlpIfConfig = TlpIfConfig(tlpSegDataWidth, txSeqNumWidth)
+  val txCplTlpCfg:    TlpIfConfig = TlpIfConfig( tlpSegDataWidth)
+  val txMsixWrReqTlp: TlpIfConfig = TlpIfConfig(32)
+
 }
 
 object PcieUsConfig {
@@ -123,153 +137,19 @@ case class pcie_us_if(pcieUsConfig: PcieUsConfig) extends Component {
   import pcieUsConfig._
 
   val io = new Bundle {
-    val s_axis_rc         = slave(Axi4Stream(rcAxisConfig))
-    val m_axis_rq         = master(Axi4Stream(rqAxisConfig))
-    val s_axis_cq         = slave(Axi4Stream(cqAxisConfig))
-    val m_axis_cc         = master(Axi4Stream(ccAxisConfig))
+    val s_axis_rc         = slave Stream (Axi4StreamXilinx(axisPcieDataWidth, rcUsrWidth))
+    val m_axis_rq         = slave Stream (Axi4StreamXilinx(axisPcieDataWidth, rqUsrWidth))
+    val s_axis_cq         = slave Stream (Axi4StreamXilinx(axisPcieDataWidth, cqUsrWidth))
+    val m_axis_cc         = master Stream (Axi4StreamXilinx(axisPcieDataWidth, rcUsrWidth))
     val s_axis_rq_seq_num = Vec.fill(2)(slave Flow (UInt(rqSeqNumWidth bits)))
 
-    val rx_req_tlp               = Vec.fill(tlpSegCount)(master Stream (TlpIf(hdrWidth, tlpSegDataWidth, withBar = true)))
-    val rx_cpl_tlp               = Vec.fill(tlpSegCount)(master Stream (TlpIf(hdrWidth, tlpSegDataWidth, withErr = true)))
-    val tx_rd_req_tlp            = Vec.fill(tlpSegCount)(slave Stream (TlpIf(hdrWidth)))
-    val tx_wr_req_tlp            = Vec.fill(tlpSegCount)(slave Stream (TlpIf(hdrWidth, tlpSegDataWidth, txSeqNumWidth)))
+    val rx_req_tlp               = Vec.fill(tlpSegCount)(master Stream (TlpIf(rxReqTlpCfg)))
+    val rx_cpl_tlp               = Vec.fill(tlpSegCount)(master Stream (TlpIf(rxCplTlpCfg)))
+    val tx_rd_req_tlp            = Vec.fill(tlpSegCount)(slave Stream (TlpIf(txRdReqTlpCfg)))
+    val tx_wr_req_tlp            = Vec.fill(tlpSegCount)(slave Stream (TlpIf(txWrReqTlpCfg)))
     val m_axis_rd_req_tx_seq_num = Vec.fill(txSeqNumCount)(master Flow (UInt(txSeqNumWidth bits)))
     val m_axis_wr_req_tx_seq_num = Vec.fill(txSeqNumCount)(master Flow (UInt(txSeqNumWidth bits)))
-    val tx_cpl_tlp               = Vec.fill(tlpSegCount)(slave Stream (TlpIf(hdrWidth, tlpSegDataWidth)))
-    val tx_msix_wr_req_tlp       = slave Stream (TlpIf(32, hdrWidth))
+    val tx_cpl_tlp               = Vec.fill(tlpSegCount)(slave Stream (TlpIf(txCplTlpCfg)))
+    val tx_msix_wr_req_tlp       = slave Stream (TlpIf(txMsixWrReqTlp))
   }
-}
-
-case class pcie_us_if_cq(pcieUsConfig: PcieUsConfig) extends Component {
-  import PcieUsConfig._
-  import pcieUsConfig._
-  val io = new Bundle {
-    val s_axis_cq  = slave(Axi4Stream(cqAxisConfig))
-    val rx_req_tlp = Vec.fill(tlpSegCount)(master Stream (TlpIf(hdrWidth, tlpSegDataWidth, withBar = true)))
-
-  }
-
-  val tlp_hdr:         Vec[TlpHeader] = Vec.fill(intTlpSegCount)(TlpHeader())
-  val tlp_bar_id:      Vec[UInt]      = Vec.fill(intTlpSegCount)(UInt(3 bits))
-  val tlp_func_num:    Vec[UInt]      = Vec.fill(intTlpSegCount)(UInt(8 bits))
-  val cq_data:         Bits           = io.s_axis_cq.data
-  val axis_cq_users:   Vec[CqUser]    = Vec.fill(intTlpSegCount)(CqUser())
-  val cq_data_int_reg: Bits           = RegNextWhen(io.s_axis_cq.data, io.s_axis_cq.fire)
-  val cq_data_full:    Bits           = cq_data ## cq_data_int_reg
-  val cq_strb:         Bits           = Bits(tlpStrbWidth bits)
-  val cq_strb_reg:     Bits           = RegNextWhen(cq_strb, io.s_axis_cq.fire)
-  val cq_strb_full:    Bits           = cq_strb ## cq_strb_reg
-  val valid:           Bool           = Bool()
-  val cq_strb_sop:     Bits           = Bits(tlpStrbWidth bits)
-
-  val rx_req_tlp_data: Vec[Bits] = Vec.fill(tlpSegCount)(Bits(intTlpSegDataWidth bits))
-  val rx_req_tlp_strb: Vec[Bits] = Vec.fill(tlpSegCount)(Bits(intTlpSegStrbWidth bits))
-
-  if (axisPcieDataWidth >= 512) { // and cq_straddle
-    val sop_proc_512 = for (seg <- 0 until intTlpSegCount) yield new Area {
-      when(axis_cq_users.head.is_sop(seg)) {}
-    }
-
-  } else {}
-
-  val paser_header = for (seg <- 0 until intTlpSegCount) yield new Area {
-    val cq_data_fmt        = ReqType()
-    val axis_cq_tlp_desctr = AxisCqDescriptor()
-    cq_data_fmt.assignFromBits(cq_data_full(intTlpSegDataWidth * seg + 75, 4 bits))
-    axis_cq_tlp_desctr.assignFromBits(cq_data_full(intTlpSegDataWidth * seg, 7 bits))
-    switch(cq_data_fmt) {
-      is(ReqType.REQ_MEM_READ) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW
-        tlp_hdr(seg).type_ := 0
-      }
-      is(ReqType.REQ_MEM_WRITE) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW_DATA
-        tlp_hdr(seg).type_ := 0
-      }
-      is(ReqType.REQ_IO_READ) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW
-        tlp_hdr(seg).type_ := 2
-      }
-      is(ReqType.REQ_IO_WRITE) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW_DATA
-        tlp_hdr(seg).type_ := 2
-      }
-      is(ReqType.REQ_MEM_FETCH_ADD) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW
-        tlp_hdr(seg).type_ := 12
-      }
-      is(ReqType.REQ_MEM_SWAP) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW_DATA
-        tlp_hdr(seg).type_ := 13
-      }
-      is(ReqType.REQ_MEM_CAS) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW_DATA
-        tlp_hdr(seg).type_ := 14
-      }
-      is(ReqType.REQ_MEM_READ_LOCKED) {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW
-        tlp_hdr(seg).type_ := 1
-      }
-      is(ReqType.REQ_MSG) {
-        when(axis_cq_tlp_desctr.dword_count.orR) {
-          tlp_hdr(seg).fmt := TlpFmt.FMT_4DW_DATA
-        } otherwise {
-          tlp_hdr(seg).fmt := TlpFmt.FMT_4DW
-        }
-        tlp_hdr(seg).type_ := B(2, 2 bits) ## axis_cq_tlp_desctr.bar_id.asBits
-      }
-      is(ReqType.REQ_MSG_VENDOR) {
-        when(axis_cq_tlp_desctr.dword_count.orR) {
-          tlp_hdr(seg).fmt := TlpFmt.FMT_4DW_DATA
-        } otherwise {
-          tlp_hdr(seg).fmt := TlpFmt.FMT_4DW
-        }
-        tlp_hdr(seg).type_ := B(2, 2 bits) ## axis_cq_tlp_desctr.bar_id.asBits
-      }
-      is(ReqType.REQ_MSG_ATS) {
-        when(axis_cq_tlp_desctr.dword_count.orR) {
-          tlp_hdr(seg).fmt := TlpFmt.FMT_4DW_DATA
-        } otherwise {
-          tlp_hdr(seg).fmt := TlpFmt.FMT_4DW
-        }
-        tlp_hdr(seg).type_ := B(2, 2 bits) ## axis_cq_tlp_desctr.bar_id.asBits
-      }
-      default {
-        tlp_hdr(seg).fmt   := TlpFmt.FMT_4DW
-        tlp_hdr(seg).type_ := 0
-      }
-    }
-    tlp_hdr(seg).rsv0        := 0
-    tlp_hdr(seg).tc          := axis_cq_tlp_desctr.tc
-    tlp_hdr(seg).rsv1        := 0
-    tlp_hdr(seg).attr_h      := axis_cq_tlp_desctr.attr(3).asBits
-    tlp_hdr(seg).rsv2        := 0
-    tlp_hdr(seg).th          := 0
-    tlp_hdr(seg).td          := 0
-    tlp_hdr(seg).ep          := 0
-    tlp_hdr(seg).attr_l      := axis_cq_tlp_desctr.attr(1 downto 0)
-    tlp_hdr(seg).at          := axis_cq_tlp_desctr.address_type
-    tlp_hdr(seg).length      := axis_cq_tlp_desctr.dword_count
-    tlp_hdr(seg).last_dw_be  := axis_cq_users(seg).first_be(7 downto 4)
-    tlp_hdr(seg).first_dw_be := axis_cq_users(seg).first_be(4 downto 0)
-    tlp_hdr(seg).address     := axis_cq_tlp_desctr.address
-    tlp_hdr(seg).ph          := 0
-
-    tlp_bar_id(seg)   := axis_cq_tlp_desctr.bar_id
-    tlp_func_num(seg) := axis_cq_tlp_desctr.target_function
-  }
-
-  axis_cq_users(0).assignFromBits(io.s_axis_cq.user)
-  axis_cq_users(1).assignFromBits(RegNextWhen(io.s_axis_cq.user, io.s_axis_cq.fire))
-
-  if (tlpDataWidth == 64) {} else {
-    val greater_64 = for (seg <- 0 until intTlpSegCount) yield new Area {
-      rx_req_tlp_data(seg) := cq_data_full >> (128 + seg * intTlpSegDataWidth)
-      when(axis_cq_users(0).is_sop(seg)){
-        
-      }
-      // rx_req_tlp_strb(seg) := 
-    }
-  }
-
 }

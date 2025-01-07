@@ -20,7 +20,7 @@
 
 TOPLEVEL_LANG = verilog
 
-SIM ?= icarus
+SIM ?= verilator
 WAVES ?= 1
 
 COCOTB_HDL_TIMEUNIT = 1ns
@@ -29,9 +29,9 @@ COCOTB_HDL_TIMEPRECISION = 1ps
 DUT      = pcie_us_if_cq
 TOPLEVEL = $(DUT)
 MODULE   = test_$(DUT)
-VERILOG_SOURCES += ../../rtl/$(DUT).v
-VERILOG_SOURCES += ../../rtl/pcie_tlp_fifo.v
-VERILOG_SOURCES += ../../rtl/pcie_tlp_fifo_raw.v
+VERILOG_SOURCES += $(DUT).v
+# VERILOG_SOURCES += ../../rtl/pcie_tlp_fifo.v
+# VERILOG_SOURCES += ../../rtl/pcie_tlp_fifo_raw.v
 
 # module parameters
 # export PARAM_AXIS_PCIE_DATA_WIDTH := 64
