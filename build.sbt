@@ -18,6 +18,7 @@ libraryDependencies += "org.apache.poi" % "poi-ooxml" % "4.1.2"
 libraryDependencies += "org.jfree" % "jfreechart" % "1.5.3"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "1.3.0"
 
+libraryDependencies += "log4j" % "log4j" % "1.2.17"
 
 
 

@@ -11,15 +11,21 @@ case class Access(num: Int) extends Bundle {
   val id:          UInt = UInt(log2Up(num) bits)
   val hit_or_miss: Bool = Bool() // 1 for hit
 }
-case class PlruControl(cacheEntryNum: Int, with_rpl_blk: Boolean = false, aging_cycles: Int = -1) extends Area {
+case class PlruControl(cacheEntryNum: Int, with_rpl_blk: Boolean = false, aging_cycles: Int = -1) extends Area with Logging{
+
+  configureLogging("plru_ctrl.log")
+
   val update:     Stream[Access] = Stream(Access(cacheEntryNum))
   val plru_entry: UInt           = UInt(log2Up(cacheEntryNum) bits)
   val rpl_end:    Flow[UInt]     = with_rpl_blk generate (Flow(UInt(log2Up(cacheEntryNum) bits)))
+
 
   val plru:  Plru      = Plru(cacheEntryNum, withEntriesValid = with_rpl_blk)
   val state: Vec[Bits] = Plru.State(cacheEntryNum)
 
   val with_aging: Boolean = aging_cycles > 0
+
+  info(s"cahe_line_num: $cacheEntryNum with_rpl_blk: ${with_rpl_blk}, with_aging_logic: ${with_aging}")
 
   val aging_logic = with_aging generate new Area {
     val cnts:         Seq[Counter] = Seq.fill(cacheEntryNum)(Counter(0, aging_cycles))

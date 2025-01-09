@@ -15,7 +15,7 @@ case class Axi4StreamXilinx(dataWidth: Int, userWidth: Int) extends Bundle {
   val tuser: Bits = Bits(userWidth bits)
 }
 
-case class TlpIfConfig( dataWidth: Int = -1, seqNumWidth: Int = -1, withBar: Boolean = false, withErr: Boolean = false)
+case class TlpIfConfig(dataWidth: Int = -1, seqNumWidth: Int = -1, withBar: Boolean = false, withErr: Boolean = false)
 
 case class TlpIf(tlpIfConfig: TlpIfConfig) extends Bundle {
   import tlpIfConfig._
@@ -101,9 +101,9 @@ case class PcieUsConfig(axisPcieDataWidth: Int) {
   val cqUsrWidth: Int = if (axisPcieDataWidth < 512) 85 else 183
   val ccUsrWidth: Int = if (axisPcieDataWidth < 512) 33 else 81
 
-  val tlpDataWidth: Int = axisPcieDataWidth
-  val tlpStrbWidth: Int = tlpDataWidth / 32
-  val tlpSegCount = 1
+  val tlpDataWidth:    Int = axisPcieDataWidth
+  val tlpStrbWidth:    Int = tlpDataWidth / 32
+  val tlpSegCount:     Int = 1
   val tlpSegDataWidth: Int = tlpDataWidth / tlpSegCount
   val rqSeqNumWidth:   Int = if (rqUsrWidth == 60) 4 else 6
   val txSeqNumWidth:   Int = rqSeqNumWidth - 1
@@ -113,11 +113,11 @@ case class PcieUsConfig(axisPcieDataWidth: Int) {
   val intTlpSegDataWidth: Int = tlpDataWidth / intTlpSegCount
   val intTlpSegStrbWidth: Int = tlpStrbWidth / intTlpSegCount
 
-  val rxReqTlpCfg:    TlpIfConfig = TlpIfConfig( tlpSegDataWidth, withErr = true)
-  val rxCplTlpCfg:    TlpIfConfig = TlpIfConfig( tlpSegDataWidth, withErr = true)
+  val rxReqTlpCfg:    TlpIfConfig = TlpIfConfig(tlpSegDataWidth, withErr = true)
+  val rxCplTlpCfg:    TlpIfConfig = TlpIfConfig(tlpSegDataWidth, withErr = true)
   val txRdReqTlpCfg:  TlpIfConfig = TlpIfConfig()
   val txWrReqTlpCfg:  TlpIfConfig = TlpIfConfig(tlpSegDataWidth, txSeqNumWidth)
-  val txCplTlpCfg:    TlpIfConfig = TlpIfConfig( tlpSegDataWidth)
+  val txCplTlpCfg:    TlpIfConfig = TlpIfConfig(tlpSegDataWidth)
   val txMsixWrReqTlp: TlpIfConfig = TlpIfConfig(32)
 
 }
