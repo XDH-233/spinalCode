@@ -11,8 +11,8 @@ case class pcie_us_if_cq(pcieUsConfig: PcieUsConfig) extends Component {
   import PcieUsConfig._
   import pcieUsConfig._
   val io = new Bundle {
-    val s_axis_cq  = slave Stream (Axi4StreamXilinx(axisPcieDataWidth, cqUsrWidth))
-    val rx_req_tlp = Vec.fill(tlpSegCount)(master Stream (TlpIf(rxReqTlpCfg)))
+    val s_axis_cq: Stream[Axi4StreamXilinx] = slave Stream (Axi4StreamXilinx(axisPcieDataWidth, cqUsrWidth))
+    val rx_req_tlp: Vec[Stream[TlpIf]] = Vec.fill(tlpSegCount)(master Stream (TlpIf(rxReqTlpCfg)))
   }
   noIoPrefix()
 

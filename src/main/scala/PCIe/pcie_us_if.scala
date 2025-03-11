@@ -51,7 +51,6 @@ case class TlpHeader() extends Bundle { // big endian
   val rsv0         = Bits(1 bits)
   val type_        = Bits(5 bits) // DW0 byte3
   val fmt          = TlpFmt()
-
 }
 
 case class CqUser(DW: Int = 512) extends Bundle { // pg213, p23 and p35
