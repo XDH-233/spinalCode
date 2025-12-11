@@ -46,8 +46,8 @@ object GeneralConfig {
 
   def generalSimConfig: SpinalSimConfig = {
     val vcsHome  = sys.env.get("VCS_HOME")
-    val vcsFound = !vcsHome.isEmpty
-    val pathEnv  = sys.env.get("PATH").getOrElse("")
+    val vcsFound = vcsHome.isDefined
+    val pathEnv  = sys.env.getOrElse("PATH", "")
     val pathList = pathEnv.split(java.io.File.pathSeparator)
 
     val verilatorFound = pathList.exists { path =>

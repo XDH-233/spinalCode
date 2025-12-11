@@ -15,30 +15,26 @@ case class CrcCore(polynomial: Bits, init_value: Bits, data_in: Bool, result_val
   }
 }
 
-case class CRC(dataWidth: Int, crcWidth: Int) extends Component {
-  val io = new Bundle {
-    val data_in:    Bits = in Bits (dataWidth bits)
-    val crc_ploy:   Bits = in Bits (crcWidth bits)
-    val crc_init:   Bits = in Bits (crcWidth bits)
-    val crc_result: Bits = out Bits (crcWidth bits)
-  }
-  noIoPrefix()
+case class CRC(data_in: Bits, crc_ploy: Bits, crc_init: Bits, crc_result: Bits) extends Area {
+  val dataWidth: Int = data_in.getWidth
+  val crcWidth:  Int = crc_ploy.getWidth
+  require(crc_init.getWidth == crcWidth && crc_result.getWidth == crcWidth)
   val crc_tmp_result: Vec[Bits] = Vec(Bits(crcWidth bits), dataWidth)
   for (index <- 0 until dataWidth) {
     val crc_core = CrcCore(
-      polynomial   = io.crc_ploy,
-      init_value   = if (index == 0) io.crc_init else crc_tmp_result(index - 1),
-      data_in      = io.data_in(dataWidth - 1 - index),
+      polynomial   = crc_ploy,
+      init_value   = if (index == 0) crc_init else crc_tmp_result(index - 1),
+      data_in      = data_in(dataWidth - 1 - index),
       result_value = crc_tmp_result(index)
     )
   }
-  io.crc_result := crc_tmp_result.last
+  crc_result := crc_tmp_result.last
 }
 
 case class CrcCal(dataWidth: Int, crcWidth: Int) extends Component {
   val io = new Bundle {
     val data_in:    Bits = in Bits (dataWidth bits)
-    val crc_ploy:   Bits = in Bits (crcWidth bits)
+    val crc_poly:   Bits = in Bits (crcWidth bits)
     val crc_init:   Bits = in Bits (crcWidth bits)
     val crc_result: Bits = out Bits (crcWidth bits)
   }
@@ -46,7 +42,7 @@ case class CrcCal(dataWidth: Int, crcWidth: Int) extends Component {
   val crc_tmp_result: Vec[Bits] = Vec(Bits(crcWidth bits), dataWidth)
   for (index <- 0 until dataWidth) {
     val crc_core = CrcCore(
-      polynomial   = io.crc_ploy,
+      polynomial   = io.crc_poly,
       init_value   = if (index == 0) io.crc_init else crc_tmp_result(index - 1),
       data_in      = io.data_in(dataWidth - 1 - index),
       result_value = crc_tmp_result(index)
@@ -55,25 +51,6 @@ case class CrcCal(dataWidth: Int, crcWidth: Int) extends Component {
   io.crc_result := crc_tmp_result.last
 }
 
-object CrcCalSim extends App {
-  SimConfig.withWave
-    .withConfig(
-      SpinalConfig(
-        defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = HIGH),
-        defaultClockDomainFrequency  = FixedFrequency(100 MHz)
-      )
-    )
-    .compile(new CrcCal(32, 32))
-    .doSim { dut =>
-      import dut._
-      dut.clockDomain.forkStimulus(10)
-      io.crc_init.randomize()
-      io.crc_ploy.randomize()
-      (0 until 100).foreach{_=>
-        io.data_in.randomize()
-        dut.clockDomain.waitSampling()
-      }
-
-    }
-
+object CrcCalRTL extends App {
+  tool.GeneralConfig.rtlGenConfig("verilogGen/").generateVerilog(CrcCal(64, 8))
 }
