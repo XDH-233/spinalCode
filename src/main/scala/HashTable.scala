@@ -35,8 +35,8 @@ case class HashTable(keyWidth: Int, hashValueWidth: Int, bucketDepth: Int, hashT
 
   noIoPrefix()
 
-  val crc_init:   Bits = B(12, hashValueWidth bits)
-  val crc_poly:   Bits = B(56, hashValueWidth bits)
+  val crc_init:   Bits = B(0xFF, hashValueWidth bits)
+  val crc_poly:   Bits = B(0x9B, hashValueWidth bits)
   val hash_value: Bits = Bits(hashValueWidth bits)
 
   val crc: CRC = CRC(io.key.key, crc_poly, crc_init, hash_value)

@@ -93,13 +93,13 @@ class CRC:
         return crc ^ self.final_xor
 
 
-class CRC8:
+class CRC8_CDMA2000:
     """CRC-8 算法"""
     
     @staticmethod
     def calculate(data):
         """CRC-8 (多项式: 56, 初始值: 12, 结果异或: 0x00)"""
-        crc = CRC(56, 12, 0x00, False, False)
+        crc = CRC(0x9B, 0xFF, 0x00, False, False)
         return crc.calculate(data)
 
 
@@ -157,11 +157,24 @@ def main():
     
     # 计算各种CRC值
     print(f"\nCRC计算结果:")
-    print(f"CRC-8:     0x{CRC8.calculate(data):02X}")
+    print(f"CRC-8:     0x{CRC8_CDMA2000.calculate(data):02X}")
     print(f"CRC-16:    0x{CRC16.calculate(data):04X}")
     print(f"CRC-16-CCITT: 0x{CRC16_CCITT.calculate(data):04X}")
     print(f"CRC-32:    0x{CRC32.calculate(data):08X}")
 
 
+
+def test_crc_calculations():
+    """测试CRC计算"""
+    rand_int = 0x4b8f6976e575f708
+    standard = CRC8_CDMA2000.calculate("123456789")
+    rand_str = CRC8_CDMA2000.calculate("4b8f6976e575f708")
+    rand_byte = CRC8_CDMA2000.calculate(rand_int.to_bytes(8, byteorder='big', signed=False))
+    print(f"CRC-8: {standard:02X}")
+    print(f"CRC-8: {rand_str:02X}")
+    print(f"CRC-8: {rand_byte:02X}")
+
+
+
 if __name__ == "__main__":
-    main()
+    test_crc_calculations()
