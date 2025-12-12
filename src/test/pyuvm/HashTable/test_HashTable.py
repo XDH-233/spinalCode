@@ -22,6 +22,16 @@ class HashOutStatus(IntEnum):
     NON_EXIST = 1
     UNAVAILABLE = 2
 
+class HashAccessOut():
+    def __init__(self, key, op, status):
+        self.key = key
+        self.op = op
+        self.status = status
+
+    def __str__(self):
+        return f"HashAccessOut: key: {self.key:16x}, op: {self.op.name}, status: {self.status.name}"
+
+
 class HashTableStatistics():
     def __init__(self):
         self.op_cnt = {HashTableOp.APPEND: 0, HashTableOp.DELETE: 0, HashTableOp.QUERY: 0}
@@ -46,6 +56,7 @@ class TbHashTable():
         self.dut = entity
         self.table = {}
         self.stat = HashTableStatistics()
+        self.exp = []
 
 
         log_name = "tb_HashTable"
@@ -74,12 +85,15 @@ class TbHashTable():
                         entrys = self.table[hash_value]
                         if len(entrys) < 8:
                             if key_in in entrys:
-                                self.log.warning(f"RM: APPEND Key: 0x{key_in:16x} hash_value: 0x{hash_value:02x}, duplicated!")
+                                self.log.warning(f"RM: APPEND Key: {key_in:16x} hash_value: 0x{hash_value:02x}, duplicated!")
                             self.table[hash_value].append(key_in)
+                            self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.SUCCESS))
                         else:
-                            self.log.warning(f"RM: APPEND No enough space for key: 0x{key_in:16x}, hash_value: 0x{hash_value:02x}!")
+                            self.log.warning(f"RM: APPEND No enough space for key: {key_in:16x}, hash_value: 0x{hash_value:02x}!")
+                            self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.UNAVAILABLE))
                     else:
                         self.table[hash_value] = [key_in]
+                        self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.SUCCESS))
                 elif op is HashTableOp.DELETE.value:
                     if hash_value in self.table:
                         entrys = self.table[hash_value]
@@ -88,14 +102,26 @@ class TbHashTable():
                             if len(entrys) == 0:
                                 self.table.pop(hash_value)
                                 self.log.info(f"RM: recycle hash_value: 0x{hash_value:02x}!")
+                            self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.SUCCESS))
                         else:
-                            self.log.warning(f"RM: DELETE Key: 0x{key_in:16x} not exist but hash_value: 0x{hash_value:02x} exist!")
+                            self.log.warning(f"RM: DELETE Key: {key_in:16x} not exist but hash_value: 0x{hash_value:02x} exist!")
+                            self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.NON_EXIST))
                     else:
                         self.log.warning(f"RM: DELETE hash_value: 0x{hash_value:02x} not exist!")
+                        self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.NON_EXIST))
                 elif op is HashTableOp.QUERY.value:
-                    pass
+                    if hash_value in self.table:
+                        entrys = self.table[hash_value]
+                        if key_in in entrys:
+                            self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.SUCCESS))
+                        else:
+                            self.log.warning(f"RM: QUERY Key: {key_in:16x} not exist but hash_value: 0x{hash_value:02x} exist!")
+                            self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.NON_EXIST))
+                    else:
+                        self.log.warning(f"RM: QUERY hash_value: 0x{hash_value:02x} not exist!")
+                        self.exp.append(HashAccessOut(key_in, op_enum, HashOutStatus.NON_EXIST))
 
-                self.log.info(f"Access in: key: 0x{key_in:16x}, op: {op_str:6}, crc8: 0x{hash_value:02x}")
+                self.log.info(f"Access in: key: {key_in:16x}, op: {op_str:6}, crc8: 0x{hash_value:02x}")
 
     async def access_out_mntr(self):
         while True:
@@ -134,6 +160,16 @@ class TbHashTable():
                     else:
                         self.stat.query_failure_cnt += 1
 
+                if len(self.exp) == 0:
+                    self.log.error(f"Expected access out is empty!")
+                    assert False, "Expected access out is empty!"
+                else:
+                    exp = self.exp.pop(0)
+                    if exp.key != key or exp.op != op_enum or exp.status != status_enum:
+                        self.log.error(f"Access out mismatch! expected: {exp}, actual: key: 0x{key:16x}, op: {op_enum.name}, status: {status_enum.name}")
+                        assert False, "Access out mismatch!"
+
+
 
 
     async def reset(self):
@@ -153,7 +189,8 @@ async def smoke(dut):
         dut.key_valid.value = 1
         rand_op = random.randint(0, 2)
         dut.key_payload_op.value = rand_op
-        rand_existed_key = 0
+        rand_key = random.randint(0, (1<<64)-1) # 1 in 10,000 chance of deleting a random key, possibly an unstored key
+        rand_existed_key = rand_key
         rand_int = random.randint(0, 10000)
         if len(tb.table) > 0:
             rand_existed_hash_value = random.choice(list(tb.table.keys()))
@@ -162,11 +199,11 @@ async def smoke(dut):
 
         if rand_op is HashTableOp.DELETE.value:
             if rand_int < 1:
-                rand_existed_key = random.randint(0, (1<<64)-1) # 1 in 10,000 chance of deleting a random key, possibly an unstored key
+                rand_existed_key = rand_key
             dut.key_payload_key.value = rand_existed_key
         else:
-            if rand_int < 1:
-                dut.key_payload_key.value = rand_existed_key # 1 in 10,000 chance of appending a stored key,  duplicated appending.
+            if rand_int < 10:
+                dut.key_payload_key.value = rand_existed_key # 1 in 1000 chance of appending a stored key,  duplicated appending.
             else:
                 dut.key_payload_key.value = random.randint(0, (1<<64)-1)
         await RisingEdge(dut.clk)
