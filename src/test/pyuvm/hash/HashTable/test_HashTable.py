@@ -98,7 +98,8 @@ class TbHashTable():
                     if hash_value in self.table:
                         entrys = self.table[hash_value]
                         if key_in in entrys:
-                            entrys.remove(key_in)
+                            while key_in in entrys:
+                                entrys.remove(key_in)
                             if len(entrys) == 0:
                                 self.table.pop(hash_value)
                                 self.log.info(f"RM: recycle hash_value: 0x{hash_value:02x}!")
@@ -140,7 +141,7 @@ class TbHashTable():
                     status_str = status_enum.name
                 except ValueError:
                     status_str = f"UNKNOWN({status})"
-                self.log.info(f"Accesss out: key: 0x{key:16x}, op: {op_str:6}, status: {status_str}")
+                self.log.info(f"Accesss out: key: {key:16x}, op: {op_str:6}, status: {status_str}")
                 if op is  HashTableOp.APPEND.value:
                     self.stat.op_cnt[HashTableOp.APPEND] += 1
                     if status_enum is HashOutStatus.SUCCESS:
@@ -160,13 +161,14 @@ class TbHashTable():
                     else:
                         self.stat.query_failure_cnt += 1
 
+
                 if len(self.exp) == 0:
                     self.log.error(f"Expected access out is empty!")
                     assert False, "Expected access out is empty!"
                 else:
                     exp = self.exp.pop(0)
                     if exp.key != key or exp.op != op_enum or exp.status != status_enum:
-                        self.log.error(f"Access out mismatch! expected: {exp}, actual: key: 0x{key:16x}, op: {op_enum.name}, status: {status_enum.name}")
+                        self.log.error(f"Access out mismatch! expected: {exp}, actual: key: {key:16x}, op: {op_enum.name}, status: {status_enum.name}")
                         assert False, "Access out mismatch!"
 
 

@@ -1,0 +1,5 @@
+package hash
+
+class CuckooHashTable {
+
+}

@@ -20,7 +20,7 @@ export PYTHONPATH := $(PWD)/../../:$(PYTHONPATH)
 DUT      = HashTable
 TOPLEVEL = $(DUT)
 COCOTB_TEST_MODULES    = test_$(DUT)
-VERILOG_SOURCES += $(PWD)/../../../../verilogGen/HashTable.v
+VERILOG_SOURCES += $(PWD)/../../../../../verilogGen/HashTable.v
 
 
 

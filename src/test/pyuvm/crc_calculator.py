@@ -102,6 +102,15 @@ class CRC8_CDMA2000:
         crc = CRC(0x9B, 0xFF, 0x00, False, False)
         return crc.calculate(data)
 
+class CRC8_HITAG:
+    """CRC-8 算法"""
+    
+    @staticmethod
+    def calculate(data):
+        """CRC-8 (多项式: 56, 初始值: 12, 结果异或: 0x00)"""
+        crc = CRC(0x1D, 0xFF, 0x00, False, False)
+        return crc.calculate(data)
+
 
 class CRC16:
     """CRC-16 算法"""
