@@ -36,3 +36,5 @@ ucli.key
 
 iverilog_dump.v
 combined_results.xml
+
+*.ron
