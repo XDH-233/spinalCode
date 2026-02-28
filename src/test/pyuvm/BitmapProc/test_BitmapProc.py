@@ -33,19 +33,20 @@ class Driver():
 
 
 class Monitor():
-    def __init__(self, dut, name, signal_name, data_names=None):
+    def __init__(self, dut, name, signal_name, value_format="x", data_names=None):
         self.dut = dut
         self.name = name
         self.data_names = data_names
         self.signal_name = signal_name
+        self.value_format = value_format
         self.log = logging.getLogger(f"{name}")
         self.log.setLevel(logging.DEBUG)
         self.valid = getattr(dut, f"{signal_name}_valid")
         self.ready = getattr(dut, f"{signal_name}_ready")
 
-        cocotb.start_soon(self.montoring())
+        cocotb.start_soon(self.monitoring())
 
-    async def montoring(self):
+    async def monitoring(self):
         while True:
             await RisingEdge(self.dut.clk)
             if self.valid.value and self.ready.value:
@@ -53,12 +54,22 @@ class Monitor():
                 if self.data_names is None:
                     sig = getattr(self.dut, f"{self.signal_name}_payload")
                     sig_value = sig.value.to_unsigned()
-                    string += f"{self.name}: 0x{sig_value:x}\n"
+                    if self.value_format == "x":
+                        string += f"{self.name}: 0x{sig_value:x}\n"
+                    elif self.value_format == "d":
+                        string += f"{self.name}: {sig_value:d}\n"
+                    elif self.value_format == "b":
+                        string += f"{self.name}: {sig_value:b}\n"
                 else:
                     for dn in self.data_names:
                         sig = getattr(self.dut, f"{self.signal_name}_payload_{dn}")
                         sig_value = sig.value.to_unsigned()
-                        string += f"{dn}: 0x{sig_value:x}\n"
+                        if self.value_format == "x":
+                            string += f"{dn}: 0x{sig_value:x}\n"
+                        elif self.value_format == "d":
+                            string += f"{dn}: {sig_value:d}\n"
+                        elif self.value_format == "b":
+                            string += f"{dn}: {sig_value:b}\n"
                 self.log.info(f"Got {self.name} data:\n{string}")
 
 
@@ -68,6 +79,8 @@ class TbFLR():
 
 
         cocotb.start_soon(Clock(self.dut.clk, 2, unit="ns").start())
+        self.bit_map_mntr = Monitor(self.dut, "bit_map_mntr", "bitmap_in","b")
+        self.id_mntr = Monitor(self.dut, "id_mntr", "index_out")
 
 
     async def reset(self):

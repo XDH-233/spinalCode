@@ -15,25 +15,21 @@ case class BitmapProc(btm_w: Int = 128) extends Component {
 
   val fifo: StreamFifo[Bits] = StreamFifo(Bits(btm_w bits), btm_w)
 
-//  val one_hots = Vec.fill(btm_w)(Bits(btm_w bits))
-//  val ids      = one_hots.map(oht => OHToUInt(oht))
-
-  val bitmap_tmp      = Bits(btm_w bits) setAsReg () init 0
-  val bitmap_reg_sent = Bits(btm_w bits) setAsReg () init 0
-  val bitmap_reg_vld  = Bool() setAsReg () init False
+  val bitmap_tmp:      Bits = Bits(btm_w bits) setAsReg () init 0
+  val bitmap_reg_sent: Bits = Bits(btm_w bits) setAsReg () init 0
+  val bitmap_reg_vld:  Bool = Bool() setAsReg () init False
 
   val fifo_pop_pipe: Stream[Bits] = fifo.io.pop.m2sPipe()
-//  val id_num   = CountOne(fifo_pop_pipe.payload)
-//  fifo_pop_pipe.payload.asBools.zip(one_hots.zipWithIndex).foreach { case (p, (oht, i)) => oht := (i -> p, default -> false) }
 
-  val btm_low_1_one_hot = ((bitmap_tmp.asUInt - 1).asBits ^ bitmap_tmp) & bitmap_tmp
-  val btm_low_1_idx     = OHToUInt(btm_low_1_one_hot)
-  val will_done         = ~((btm_low_1_one_hot ^ bitmap_reg_sent) ^ fifo_pop_pipe.payload).orR
+  val btm_low_1_one_hot: Bits = ((bitmap_tmp.asUInt - 1).asBits ^ bitmap_tmp) & bitmap_tmp
+  val btm_low_1_idx:     UInt = OHToUInt(btm_low_1_one_hot)
+  val will_done:         Bool = ~((btm_low_1_one_hot ^ bitmap_reg_sent) ^ fifo_pop_pipe.payload).orR
+
   io.bitmap_in <> fifo.io.push
 
   io.index_out.payload := btm_low_1_idx
   io.index_out.valid   := bitmap_reg_vld
-  fifo_pop_pipe.ready    := will_done & io.index_out.ready & bitmap_reg_vld
+  fifo_pop_pipe.ready  := will_done & io.index_out.ready & bitmap_reg_vld
 
   when(~bitmap_reg_vld) {
     bitmap_tmp      := fifo_pop_pipe.payload
@@ -55,4 +51,3 @@ case class BitmapProc(btm_w: Int = 128) extends Component {
 object BitmapProcRTL extends App {
   tool.GeneralConfig.rtlGenConfig("verilogGen/").generateVerilog(BitmapProc(8))
 }
-
