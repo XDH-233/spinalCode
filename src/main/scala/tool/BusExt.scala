@@ -124,7 +124,7 @@ object BusExt {
       avst.ready := st.ready
       st
     }
-    def divide(cnt: Int = 2, name: String = "") = {
+    def divide(cnt: Int = 2, name: String = ""): AvalonST = {
       var retName = avst.name
       if (avst.name == null) {
         if (name == "") {

@@ -1,12 +1,13 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, FallingEdge, Timer, ClockCycles
+from cocotb.triggers import RisingEdge, ClockCycles
 
 import logging
 
 import random
 
-class Driver():
+
+class Driver:
     def __init__(self, dut, name, signal_name, data_names):
         self.dut = dut
         self.name = name
@@ -32,7 +33,7 @@ class Driver():
         self.valid.value = 0
 
 
-class Monitor():
+class Monitor:
     def __init__(self, dut, name, signal_name, value_format="x", data_names=None):
         self.dut = dut
         self.name = name
@@ -73,15 +74,13 @@ class Monitor():
                 self.log.info(f"Got {self.name} data:\n{string}")
 
 
-class TbFLR():
-    def __init__(self,dut):
+class TbFLR:
+    def __init__(self, dut):
         self.dut = dut
 
-
         cocotb.start_soon(Clock(self.dut.clk, 2, unit="ns").start())
-        self.bit_map_mntr = Monitor(self.dut, "bit_map_mntr", "bitmap_in","b")
+        self.bit_map_mntr = Monitor(self.dut, "bit_map_mntr", "bitmap_in", "b")
         self.id_mntr = Monitor(self.dut, "id_mntr", "index_out")
-
 
     async def reset(self):
         self.dut.reset.value = 1
@@ -90,9 +89,6 @@ class TbFLR():
         await ClockCycles(self.dut.clk, 10)
         self.dut.reset.value = 0
         await ClockCycles(self.dut.clk, 10)
-
-
-
 
 
 @cocotb.test()
@@ -105,4 +101,3 @@ async def smoke(dut):
         await RisingEdge(dut.clk)
     dut.bitmap_in_valid.value = 0
     await ClockCycles(dut.clk, 100)
-

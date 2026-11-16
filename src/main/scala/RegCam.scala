@@ -12,7 +12,7 @@ case class CamEntry(width: Int) extends Bundle {
 case class RegCam(width: Int, Depth: Int) extends Component {
   val io = new Bundle {
     val query:          Flow[Bits] = slave Flow (Bits(width bits))
-    val exist:          Bool       = out Bool ()
+    val query_exist:    Bool       = out Bool ()
     val insert:         Flow[Bits] = slave Flow (Bits(width bits))
     val insert_success: Bool       = out Bool ()
     val clear:          Flow[Bits] = slave Flow (Bits(width bits))
@@ -29,12 +29,14 @@ case class RegCam(width: Int, Depth: Int) extends Component {
   val vlds_bits:        Bits      = vlds.asBits
   val plus_one:         Bits      = (vlds_bits.asUInt + 1).asBits
   val low_zero_one_hot: Vec[Bool] = ((plus_one ^ vlds_bits) & plus_one).asBools
-  val avail:            UInt      = OHToUInt(low_zero_one_hot.asBits)
+  val avail:            UInt      = OHToUInt(low_zero_one_hot.asBits) // for simulation and debug
   val full:             Bool      = vlds.asBits.andR
-  val qry_exist = qry(io.query.payload)
-  val clr_exist = qry(io.clear.payload)
 
-  io.exist := RegNext(qry_exist.exist & io.query.valid) init False
+  val qry_exist    = qry(io.query.payload)
+  val clr_exist    = qry(io.clear.payload)
+  val insert_exist = qry(io.insert.payload)
+
+  io.query_exist := RegNext(qry_exist.exist & io.query.valid) init False
 
   vlds.zip(regs).foreach { case (v, r) => v := r.lsb }
   entrs.zip(regs).foreach { case (e, r) =>
@@ -45,22 +47,19 @@ case class RegCam(width: Int, Depth: Int) extends Component {
   regs.zip(low_zero_one_hot).foreach { case (r, l) =>
     when(io.clear.valid & io.clear.payload === r(1, width bits) & r.lsb) {
       r := r(1, width bits) ## B(1 bits, default -> False)
-    } elsewhen (io.insert.valid & ~full & l) {
+    } elsewhen (io.insert.valid & ~full & l & ~insert_exist.exist) {
       r := io.insert.payload ## B(1 bits, default -> True)
-    }// clear and insert a same entry is illegal
+    } // clear and insert a same entry is illegal
 
   }
 
-  io.insert_success := RegNext(io.insert.valid & ~full) init False
+  io.insert_success := RegNext(io.insert.valid & ~full & ~insert_exist.exist) init False
   io.clear_success  := RegNext(io.clear.valid & clr_exist.exist) init False
 
   private def qry(b: Bits) = new Area {
     val exists: Vec[Bool] = Vec.fill(Depth)(Bool())
     exists.zip(regs).foreach { case (e, r) =>
-      val entry = CamEntry(width)
-      entry.data := r(1, width bits)
-      entry.vld  := r.lsb
-      e          := r.lsb & (entry.data === b)
+      e := r.lsb & (r(1, width bits) === b)
     }
     val exist: Bool = exists.asBits.orR
 

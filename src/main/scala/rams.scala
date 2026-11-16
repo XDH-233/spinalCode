@@ -2,6 +2,8 @@ import spinal.core._
 import spinal.lib._
 import spinal.core
 
+import scala.language.postfixOps
+
 case class sdpram(dw: Int, aw: Int) extends Component {
   val io = new Bundle {
     val rd_clk  = in Bool ()
@@ -40,7 +42,7 @@ case class rams() extends Component {
   confList.foreach { case (dw, dp) =>
     val dpStr = if (dp % 1024 == 0) s"${dp / 1024}Kx" else s"${dp}x"
 
-    val sdpram_inst = sdpram(dw, log2Up(dp)).setDefinitionName("sdpram" + dpStr + dw.toString())
+    val sdpram_inst = sdpram(dw, log2Up(dp)).setDefinitionName("sdpram" + dpStr + dw.toString)
     sdpram_inst.io.wr_clk.clear()
     sdpram_inst.io.wren.clear()
     sdpram_inst.io.wr_din.clearAll()

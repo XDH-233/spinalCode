@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>RadixIdTree 交互演示 — avail_id 计算与 recycle 更新</title>
+<style>
+  :root{
+    --free:#16a34a; --alloc:#94a3b8; --invalid:#e2e8f0;
+    --pick:#f59e0b; --clr:#dc2626; --ink:#0f172a; --muted:#64748b;
+  }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0;background:#f8fafc;color:var(--ink)}
+  header{padding:14px 20px;background:#0f172a;color:#fff}
+  header h1{margin:0 0 4px;font-size:18px}
+  header p{margin:0;font-size:12px;color:#94a3b8}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 20px;
+       background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:5}
+  button{border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:6px 12px;
+         font-size:13px;cursor:pointer}
+  button:hover{background:#f1f5f9}
+  button.primary{background:#0f172a;color:#fff;border-color:#0f172a}
+  button.primary:hover{background:#1e293b}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  select,input{border:1px solid #cbd5e1;border-radius:6px;padding:5px 8px;font-size:13px}
+  input{width:70px}
+  .stat{display:flex;gap:14px;flex-wrap:wrap;padding:12px 20px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;min-width:130px}
+  .card .k{font-size:11px;color:var(--muted)}
+  .card .v{font-size:18px;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+  .card .v.fire{animation:firep .5s}
+  @keyframes firep{0%{background:#fbbf24}100%{background:transparent}}
+  .grpchip{display:inline-block;font-family:ui-monospace,monospace;font-size:12px;
+           background:#ede9fe;border:1px solid #a78bfa;border-radius:4px;padding:1px 6px;margin:0 2px}
+  .grpchip.new{animation:pip .5s}
+  @keyframes pip{0%{transform:scale(1.4);background:#fbbf24}100%{transform:scale(1)}}
+  #levels{padding:10px 20px;overflow-x:auto}
+  .lvl{margin-bottom:14px}
+  .lvl .tag{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .nodes{display:flex;gap:10px;width:max-content}
+  .node{border:1.5px solid #e2e8f0;border-radius:6px;padding:8px 6px 4px;background:#fff;
+        transition:outline .15s;position:relative}
+  .node .nlab{position:absolute;top:-9px;left:6px;font-size:10px;background:#fff;
+              color:var(--muted);padding:0 4px;border-radius:3px}
+  .node.hl{outline:2.5px solid var(--pick);background:#fffbeb}
+  .bits{display:flex;gap:2px}
+  .bit{width:22px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+       font-family:ui-monospace,monospace;font-size:13px;font-weight:600;transition:background .2s}
+  .lvl.leaf .bit{width:17px}
+  .bit.free{background:var(--free);color:#fff}
+  .bit.alloc{background:var(--alloc);color:#fff}
+  .bit.invalid{background:repeating-linear-gradient(45deg,#f1f5f9,#f1f5f9 4px,#e2e8f0 4px,#e2e8f0 8px);
+               color:#cbd5e1}
+  .bit.pick{outline:3px solid var(--pick);animation:pulse .6s infinite alternate;z-index:2}
+  @keyframes pulse{from{box-shadow:0 0 0 0 #fbbf24}to{box-shadow:0 0 0 6px #fbbf2400}}
+  .bit.clr-flash{animation:clrf .8s}
+  @keyframes clrf{0%{background:var(--clr);color:#fff;transform:scale(1.3)}100%{}}
+  .bit.set-flash{animation:setf .8s}
+  @keyframes setf{0%{background:#065f46;color:#fff;transform:scale(1.3)}100%{}}
+  .bit.keep-flash{animation:keepf .8s}
+  @keyframes keepf{0%{outline:3px solid #3b82f6}100%{}}
+  .bit.leafclk{cursor:pointer}
+  .legend{display:flex;gap:16px;padding:0 20px 6px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  #log{margin:6px 20px 30px;background:#0f172a;color:#a5f3fc;border-radius:8px;
+       font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:10px 14px;
+       height:190px;overflow-y:auto;line-height:1.7}
+  #log .ok{color:#86efac}#log .warn{color:#fcd34d}#log .info{color:#94a3b8}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+         background:#0f172a;color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;
+         opacity:0;transition:opacity .3s;pointer-events:none}
+  #toast.show{opacity:.95}
+</style>
+</head>
+<body>
+<header>
+  <h1>RadixIdTree — radix-4 树形 ID 管理器交互演示</h1>
+  <p>avail_id：逐层取节点 → OHMasking.first 选最低空闲位 → 拼 id；握手后叶层清位、上层条件清标志。recycle：叶层置位、上层"子节点原为满"才置标志。点击叶层已分配(灰)的 bit 可直接回收。</p>
+</header>
+
+<div class="bar">
+  <label>id_num
+    <select id="selN"><option>16</option><option selected>64</option><option>256</option></select>
+  </label>
+  <button class="primary" id="btnCalc">▶ 演算 avail_id（只读）</button>
+  <button class="primary" id="btnAlloc">⚡ 分配（演算 + 握手）</button>
+  <input id="inId" type="number" min="0" placeholder="id">
+  <button id="btnRecyc">🔁 回收</button>
+  <button id="btnRand">🎲 随机一步</button>
+  <button id="btnRand50">随机 ×50</button>
+  <button id="btnStop">⏹ 停止</button>
+  <button id="btnReset">♻️ 复位</button>
+  <label>速度
+    <select id="selSpd"><option value="700">慢</option><option value="300" selected>中</option><option value="90">快</option></select>
+  </label>
+</div>
+
+<div class="stat">
+  <div class="card"><div class="k">avail_id_valid</div><div class="v" id="stValid">-</div></div>
+  <div class="card"><div class="k">avail_id（最低空闲 id）</div><div class="v" id="stAvail">-</div></div>
+  <div class="card"><div class="k">avail_cnt（空闲总数）</div><div class="v" id="stCnt">-</div></div>
+  <div class="card" style="min-width:260px"><div class="k">译码中的 acc（按层拼组）</div>
+    <div class="v" id="stAcc"><span class="info">—</span></div></div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--free)"></i>1 = 空闲</span>
+  <span><i style="background:var(--alloc)"></i>0 = 已分配</span>
+  <span><i style="background:var(--invalid)"></i>无效位（超出 id_num，恒 0）</span>
+  <span><i style="border:2px solid var(--pick)"></i>本层选中位（OHMasking.first / recycle 目标）</span>
+</div>
+
+<div id="levels"></div>
+<div id="log"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const levelsEl=$("#levels"), logEl=$("#log");
+let L=0, W=0, idNum=0, tree=[], cell={}, busy=false, stopFlag=false;
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const spd = () => +$("#selSpd").value;
+
+function log(msg, cls=""){ const d=document.createElement("div"); if(cls)d.className=cls;
+  d.innerHTML=msg; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+function toast(t){ const e=$("#toast"); e.textContent=t; e.classList.add("show");
+  setTimeout(()=>e.classList.remove("show"),1600); }
+
+/* ---------- 模型 ---------- */
+function nodeW(l){ return L===1 ? Math.min(4,idNum) : 4; }
+function levelBits(l){ return Math.min(4**(l+1), idNum); }
+function validBits(l){ return idNum >> (2*(L-1-l)); }
+function grpOf(l,id){ return (id >> (2*(L-l)-2)) & 3; }   // 第 l 层对应 id 位段（2bit）
+function baseOf(l,nodeIdx){ return nodeIdx*4; }
+
+function init(n){
+  idNum=n; W=Math.round(Math.log2(n)); L=Math.ceil(W/2);
+  tree=[];
+  for(let l=0;l<L;l++){
+    const arr=Array(levelBits(l)).fill(0);
+    for(let i=0;i<validBits(l);i++) arr[i]=1;
+    tree.push(arr);
+  }
+  render(); updateStats();
+  logEl.innerHTML="";
+  log(`复位: id_num=${idNum}, idWidth=${W}, 层数 L=${L}，各层有效位全 1（全部空闲）`,"info");
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  levelsEl.innerHTML=""; cell={};
+  for(let l=0;l<L;l++){
+    const div=document.createElement("div"); div.className="lvl"+(l===L-1?" leaf":"");
+    const isLeaf = l===L-1;
+    div.innerHTML=`<div class="tag">level${l}${isLeaf?" (leaf)":""} — 位图宽 ${levelBits(l)}bit，`+
+      `${isLeaf?"每位 = 一个 id":"每 4bit 一节点 = 子树有无空闲标志"}</div>`;
+    const nodes=document.createElement("div"); nodes.className="nodes";
+    const nNodes=levelBits(l)/nodeW(l);
+    cell[l]=[];
+    for(let n=0;n<nNodes;n++){
+      const nd=document.createElement("div"); nd.className="node";
+      nd.innerHTML=`<span class="nlab">node ${n}</span>`;
+      const bs=document.createElement("div"); bs.className="bits";
+      for(let i=0;i<nodeW(l);i++){
+        const b=document.createElement("div"); b.className="bit";
+        const idx=n*nodeW(l)+i;
+        b.dataset.l=l; b.dataset.idx=idx;
+        cell[l][idx]=b; bs.appendChild(b);
+      }
+      nd.appendChild(bs); nodes.appendChild(nd);
+    }
+    div.appendChild(nodes); levelsEl.appendChild(div);
+  }
+  paintAll();
+  if(L===L){ // 叶层可点击回收
+    const leaf=cell[L-1]||[];
+    leaf.forEach((b,idx)=>{ b.classList.add("leafclk");
+      b.title=`id=${idx}，点击回收`;
+      b.onclick=()=>{ if(!busy && tree[L-1][idx]===0) recycleAnim(idx);
+                      else if(tree[L-1][idx]===1) toast("该 id 已空闲，无需回收"); };
+    });
+  }
+}
+function paintAll(){
+  for(let l=0;l<L;l++) for(let i=0;i<levelBits(l);i++) paintBit(l,i);
+}
+function paintBit(l,i){
+  const b=cell[l][i]; b.classList.remove("free","alloc","invalid");
+  if(i>=validBits(l)) b.classList.add("invalid");
+  else b.classList.add(tree[l][i]?"free":"alloc");
+  b.textContent=tree[l][i];
+}
+function nodeEl(l,nodeIdx){ return levelsEl.querySelectorAll(".lvl")[l]
+  .querySelectorAll(".node")[nodeIdx]; }
+function clearHl(){ document.querySelectorAll(".node.hl").forEach(e=>e.classList.remove("hl"));
+  document.querySelectorAll(".bit.pick").forEach(e=>e.classList.remove("pick")); }
+
+/* ---------- 状态 ---------- */
+function computePath(){
+  const steps=[]; let acc=0;
+  for(let l=0;l<L;l++){
+    const w=nodeW(l), base=acc*4;
+    const node=tree[l].slice(base,base+w);
+    let pick=-1; for(let i=0;i<w;i++) if(node[i]){pick=i;break;}
+    steps.push({l,base,node,pick,acc});
+    acc=(acc<<2)|(pick>=0?pick:0);
+  }
+  const valid=steps.every(s=>s.pick>=0) && tree[0].some(b=>b===1);
+  return {steps,acc,valid};
+}
+function updateStats(fire){
+  const p=computePath();
+  $("#stValid").textContent = p.valid?1:0;
+  $("#stAvail").textContent = p.valid?`${p.acc} (0b${p.acc.toString(2).padStart(W,"0")})`:"—";
+  $("#stCnt").textContent = tree[L-1].filter(b=>b===1).length;
+  if(fire){ const v=$("#stAvail"); v.classList.remove("fire"); void v.offsetWidth; v.classList.add("fire"); }
+}
+function accDisplay(acc, upto, hi){
+  // 显示已拼出的 acc 低 upto 组
+  let html="";
+  for(let l=0;l<L;l++){
+    const g=(l<upto)? (acc>>(2*(L-1-l)))&3 : null;
+    const bits=2*(L-1-l);
+    html += l<upto
+      ? `<span class="grpchip${l===hi?" new":""}">grp${l}=${g.toString(2).padStart(2,"0")}</span>`
+      : `<span class="grpchip" style="opacity:.25">grp${l}=??</span>`;
+  }
+  return html;
+}
+
+/* ---------- alloc 演算 ---------- */
+async function allocAnim(commit){
+  busy=true; stopFlag=false; clearHl();
+  $("#stAcc").innerHTML="<span class='info'>…</span>";
+  const p=computePath();
+  if(!p.valid){ log("树已满：valid=0，无法分配","warn"); toast("没有空闲 id 了，先回收几个"); busy=false; return; }
+  log(`─── alloc 演算开始${commit?"（将握手生效）":"（只读）"} ───`,"info");
+  for(const s of p.steps){
+    if(stopFlag){busy=false;return;}
+    const nIdx=s.base/4;
+    nodeEl(s.l,nIdx).classList.add("hl");
+    const bitIdx=s.base+s.pick;
+    cell[s.l][bitIdx].classList.add("pick");
+    const nodeStr=s.node.join("");
+    log(`level${s.l}: node${nIdx}[bit${s.base}..+4] = <b>${nodeStr}</b> → OHMasking.first = bit${s.pick}`+
+        ` → grp${s.l} = ${s.pick.toString(2).padStart(2,"0")}`);
+    $("#stAcc").innerHTML=accDisplay(p.acc, s.l+1, s.l);
+    await sleep(spd());
+  }
+  log(`译码完成：avail_id = <b>${p.acc}</b> (0b${p.acc.toString(2).padStart(W,"0")})`,"ok");
+  if(!commit){ updateStats(); busy=false; return; }
+
+  // ---- 握手生效：先同步算好并落盘全部状态变更，动画只做演示 ----
+  // （避免动画中途被打断导致树处于"叶层已改、标志未维护"的不一致状态）
+  log(`握手 fire！叶层清 id${p.acc}，上层按 aClear 递归维护标志：`,"warn");
+  const aClear=Array(L).fill(false); aClear[L-1]=true;
+  for(let l=L-2;l>=0;l--){
+    const c=p.steps[l+1]; const after=c.node.slice();
+    if(aClear[l+1]) after[c.pick]=0;
+    aClear[l]=after.every(b=>b===0);
+  }
+  const actions=[];   // {l, idx, val, msg}
+  const leafIdx=p.steps[L-1].base+p.steps[L-1].pick;
+  actions.push({l:L-1, idx:leafIdx, val:0, cls:"clr-flash",
+    msg:`leaf: 清 id${leafIdx} 的 bit（无条件）`});
+  for(let l=L-2;l>=0;l--){
+    const idx=p.steps[l].base+p.steps[l].pick;
+    if(aClear[l]) actions.push({l, idx, val:0, cls:"clr-flash",
+      msg:`level${l}: 子节点写后变空 → 清标志位 node${p.steps[l].base/4} 的 bit${p.steps[l].pick}`});
+    else          actions.push({l, idx, val:null, cls:"keep-flash",
+      msg:`level${l}: 子节点仍有空闲 → 标志保持 1（不动）`});
+  }
+  for(const a of actions) if(a.val!==null) tree[a.l][a.idx]=a.val; // 状态一次落盘
+  // 逐层演示
+  for(const a of actions){
+    paintBit(a.l,a.idx);
+    cell[a.l][a.idx].classList.add(a.cls);
+    log(a.msg, a.val===0?"ok":(a.val===1?"ok":"info"));
+    await sleep(stopFlag?0:spd());
+  }
+  verifyModel();
+  updateStats(true);
+  log(`─── 分配完成，下一拍 avail_id 已更新 ───`,"info");
+  setTimeout(clearHl,600);
+  busy=false;
+}
+
+/* ---------- recycle 演算 ---------- */
+async function recycleAnim(id){
+  if(busy) return;
+  if(!(id>=0 && id<idNum)){ toast(`id 超出范围 0~${idNum-1}`); return; }
+  if(tree[L-1][id]===1){ toast(`id${id} 本来就空闲（重复回收，协议违规）`); return; }
+  busy=true; stopFlag=false; clearHl();
+  $("#stAcc").innerHTML="<span class='info'>…</span>";
+  const snap=tree.map(a=>a.slice());
+  log(`─── recycle id=${id} (0b${id.toString(2).padStart(W,"0")}) ───`,"info");
+  // 分解 id 位段
+  const gs=[]; for(let l=0;l<L;l++) gs.push(grpOf(l,id));
+  log(`id 位段分解: ` + gs.map((g,l)=>`grp${l}=<b>${g.toString(2).padStart(2,"0")}</b>`).join(" "));
+
+  // 逐层定位（自根向叶）
+  for(let l=0;l<L;l++){
+    if(stopFlag){busy=false;return;}
+    const nIdx=id>>(2*(L-l));
+    nodeEl(l,nIdx).classList.add("hl");
+    const idx=baseOf(l,nIdx)+gs[l];
+    cell[l][idx].classList.add("pick");
+    log(`level${l}: node${nIdx}，grp${l}=${gs[l].toString(2).padStart(2,"0")} → 目标 bit${idx}`);
+    await sleep(spd());
+  }
+  // 状态先一次落盘（条件按操作前快照判断），再逐层演示
+  const actions=[]; // {l, idx, val, cls, msg}
+  actions.push({l:L-1, idx:id, val:1, cls:"set-flash", msg:`leaf: 置回 id${id} 的 bit（无条件）`});
+  for(let l=L-2;l>=0;l--){
+    const cBase=baseOf(l+1,id>>(2*(L-l-1)) );
+    const child=snap[l+1].slice(cBase,cBase+nodeW(l+1));
+    const wasEmpty=child.every(b=>b===0);
+    const idx=baseOf(l, id>>(2*(L-l)))+gs[l];
+    if(wasEmpty) actions.push({l, idx, val:1, cls:"set-flash",
+      msg:`level${l}: 子节点原为满(全 0) → 置标志位`});
+    else         actions.push({l, idx, val:null, cls:"keep-flash",
+      msg:`level${l}: 子节点本就有空闲 → 标志已为 1，不动`});
+  }
+  for(const a of actions) if(a.val!==null) tree[a.l][a.idx]=a.val;
+  for(const a of actions){
+    paintBit(a.l,a.idx);
+    cell[a.l][a.idx].classList.add(a.cls);
+    log(a.msg, a.val===1?"ok":"info");
+    await sleep(stopFlag?0:spd());
+  }
+  verifyModel();
+  updateStats(true);
+  log(`─── 回收完成，avail_id 组合更新 ───`,"info");
+  setTimeout(clearHl,600);
+  busy=false;
+}
+
+/* ---------- 一致性自检：上层标志位必须等于子节点内容的 OR，不一致则修复 ---------- */
+function verifyModel(){
+  let bad=0;
+  for(let l=L-2;l>=0;l--){
+    const nChild=Math.floor(levelBits(l+1)/nodeW(l+1));
+    for(let b=0;b<levelBits(l);b++){
+      const expect=(b<nChild)
+        ? (tree[l+1].slice(b*nodeW(l+1),(b+1)*nodeW(l+1)).some(v=>v===1)?1:0)
+        : 0; // 子节点不存在的位属无效区，恒 0
+      if(tree[l][b]!==expect){ tree[l][b]=expect; paintBit(l,b); bad++; }
+    }
+  }
+  if(bad) log(`⚠ 检测到 ${bad} 处标志位与子树状态不一致（多为动画中途被打断所致），已自叶层重算修复`,"warn");
+  return bad;
+}
+
+/* ---------- 控件 ---------- */
+$("#btnCalc").onclick = ()=>{ if(!busy) allocAnim(false); };
+$("#btnAlloc").onclick = ()=>{ if(!busy) allocAnim(true); };
+$("#btnRecyc").onclick = ()=>{ if(!busy) recycleAnim(+$("#inId").value); };
+$("#btnRand").onclick = async ()=>{
+  if(busy) return;
+  const allocated=[]; tree[L-1].forEach((b,i)=>{ if(b===0) allocated.push(i); });
+  if(allocated.length && (tree[L-1].filter(b=>b===1).length===0 || Math.random()<0.4)){
+    await recycleAnim(allocated[Math.floor(Math.random()*allocated.length)]);
+  }else await allocAnim(true);
+};
+let randLoop=false;
+$("#btnRand50").onclick = async ()=>{
+  if(randLoop||busy){ return; } randLoop=true; stopFlag=false;
+  const old=$("#selSpd").value; $("#selSpd").value="90";
+  for(let i=0;i<50;i++){
+    if(stopFlag) break;
+    const freeCnt=tree[L-1].filter(b=>b===1).length;
+    const allocated=[]; tree[L-1].forEach((b,j)=>{ if(b===0) allocated.push(j); });
+    if(allocated.length && (freeCnt===0 || Math.random()<0.42))
+      await recycleAnim(allocated[Math.floor(Math.random()*allocated.length)]);
+    else if(freeCnt>0) await allocAnim(true);
+    else break;
+  }
+  $("#selSpd").value=old; randLoop=false;
+};
+$("#btnStop").onclick = ()=>{ stopFlag=true; };
+$("#btnReset").onclick = ()=>{ if(randLoop){stopFlag=true; setTimeout(()=>$("#btnReset").onclick(),300); return;}
+  init(+$("#selN").value); };
+$("#selN").onchange = ()=>{ if(!randLoop) init(+$("#selN").value); };
+
+init(64);
+</script>
+</body>
+</html>

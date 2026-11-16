@@ -1,10 +1,11 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, FallingEdge, Timer, ClockCycles
+from cocotb.triggers import RisingEdge, ClockCycles
 
 import logging
 
-class Driver():
+
+class Driver:
     def __init__(self, dut, name, signal_name, data_names):
         self.dut = dut
         self.name = name
@@ -30,7 +31,7 @@ class Driver():
         self.valid.value = 0
 
 
-class Monitor():
+class Monitor:
     def __init__(self, dut, name, signal_name, data_names=None):
         self.dut = dut
         self.name = name
@@ -60,18 +61,31 @@ class Monitor():
                 self.log.info(f"Got {self.name} data:\n{string}")
 
 
-class TbFLR():
-    def __init__(self,dut):
+class TbFLR:
+    def __init__(self, dut):
         self.dut = dut
 
-        self.flr_cmd_drv = Driver(self.dut, "flr_cmd_driver", "flr_cmd_if", ["source_type", "function_id", "trans_id", "slot_id_cnt"])
+        self.flr_cmd_drv = Driver(
+            self.dut,
+            "flr_cmd_driver",
+            "flr_cmd_if",
+            ["source_type", "function_id", "trans_id", "slot_id_cnt"],
+        )
 
         cocotb.start_soon(Clock(self.dut.clk, 2, unit="ns").start())
 
-        self.destroy_cmd_mntr=Monitor(self.dut, "destroy_cmd_mntr", "qp_state_destroy_cmd", ["destroy_type", "trans_id", "queue_slot_id"])
-        self.flr_done_mntr = Monitor(self.dut, "flr_done_mntr", "flr_done", ["source_type", "trans_id"])
-        self.mr_fuct_id_mntr = Monitor(self.dut, "mr_fuct_id_mntr", "mpt_mtt_flr_fuct_id")
-
+        self.destroy_cmd_mntr = Monitor(
+            self.dut,
+            "destroy_cmd_mntr",
+            "qp_state_destroy_cmd",
+            ["destroy_type", "trans_id", "queue_slot_id"],
+        )
+        self.flr_done_mntr = Monitor(
+            self.dut, "flr_done_mntr", "flr_done", ["source_type", "trans_id"]
+        )
+        self.mr_fuct_id_mntr = Monitor(
+            self.dut, "mr_fuct_id_mntr", "mpt_mtt_flr_fuct_id"
+        )
 
     async def reset(self):
         self.dut.reset.value = 1
@@ -82,23 +96,22 @@ class TbFLR():
         self.dut.reset.value = 0
         await ClockCycles(self.dut.clk, 10)
 
-    async def slot_id_pre_fill(self,num: int):
+    async def slot_id_pre_fill(self, num: int):
         prefix = "slot_id_buffer_push_payload_slot_ids_"
         cycles = (num + 102) // 102
         self.dut.slot_id_buffer_push_valid.value = 1
         for c in range(cycles):
             vld_num = 0
-            if num - (c+1) * 102  > 0:
+            if num - (c + 1) * 102 > 0:
                 vld_num = 102
             else:
                 vld_num = num - c * 102
             self.dut.slot_id_buffer_push_payload_vld_num.value = vld_num
             for i in range(102):
-               sig = getattr(self.dut, prefix + str(i))
-               sig.value = c * 102 + i
+                sig = getattr(self.dut, prefix + str(i))
+                sig.value = c * 102 + i
             await ClockCycles(self.dut.clk, 1)
         self.dut.slot_id_buffer_push_valid.value = 0
-
 
 
 @cocotb.test()
@@ -109,11 +122,17 @@ async def smoke(dut):
     await ClockCycles(dut.clk, 10)
     await tb.slot_id_pre_fill(64)
     dut.flr_cmd_if_valid.value = 1
-    await tb.flr_cmd_drv.send([{"source_type": 0, "function_id": 5, "trans_id": 1, "slot_id_cnt": 128}])
+    await tb.flr_cmd_drv.send(
+        [{"source_type": 0, "function_id": 5, "trans_id": 1, "slot_id_cnt": 128}]
+    )
     await ClockCycles(dut.clk, 20)
-    await tb.flr_cmd_drv.send([{"source_type": 4, "function_id": 5, "trans_id": 2, "slot_id_cnt": 32}])
+    await tb.flr_cmd_drv.send(
+        [{"source_type": 4, "function_id": 5, "trans_id": 2, "slot_id_cnt": 32}]
+    )
     await ClockCycles(dut.clk, 20)
-    await tb.flr_cmd_drv.send([{"source_type": 2, "function_id": 5, "trans_id": 3, "slot_id_cnt": 64}])
+    await tb.flr_cmd_drv.send(
+        [{"source_type": 2, "function_id": 5, "trans_id": 3, "slot_id_cnt": 64}]
+    )
     await ClockCycles(dut.clk, 100)
     dut.qp_state_destroy_done.value = 1
     await ClockCycles(dut.clk, 128)
@@ -137,10 +156,11 @@ async def ostd(dut):
     await ClockCycles(dut.clk, 10)
     await tb.slot_id_pre_fill(64)
     dut.flr_cmd_if_valid.value = 1
-    await tb.flr_cmd_drv.send([{"source_type": 0, "function_id": 5, "trans_id": 1, "slot_id_cnt": 128}])
+    await tb.flr_cmd_drv.send(
+        [{"source_type": 0, "function_id": 5, "trans_id": 1, "slot_id_cnt": 128}]
+    )
     await ClockCycles(dut.clk, 100)
     dut.qp_state_destroy_done.value = 1
     await ClockCycles(dut.clk, 128)
     dut.qp_state_destroy_done.value = 0
     await ClockCycles(dut.clk, 100)
-

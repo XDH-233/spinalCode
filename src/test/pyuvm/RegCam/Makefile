@@ -17,10 +17,11 @@ COCOTB_HDL_TIMEPRECISION = 1ps
 
 export PYTHONPATH := $(PWD)/../../:$(PYTHONPATH)
 
-DUT      = RegCam
+DUT      = reg_cam
 TOPLEVEL = $(DUT)
 COCOTB_TEST_MODULES    = test_$(DUT)
-VERILOG_SOURCES += $(PWD)/../../../../verilogGen/RegCam.v
+# VERILOG_SOURCES += $(PWD)/../../../../verilogGen/RegCam.v
+VERILOG_SOURCES += $(PWD)/reg_cam.sv
 
 
 

@@ -13,19 +13,16 @@ case class BitmapProc(btm_w: Int = 128) extends Component {
 
   noIoPrefix()
 
-  val fifo: StreamFifo[Bits] = StreamFifo(Bits(btm_w bits), btm_w)
-
   val bitmap_tmp:      Bits = Bits(btm_w bits) setAsReg () init 0
   val bitmap_reg_sent: Bits = Bits(btm_w bits) setAsReg () init 0
   val bitmap_reg_vld:  Bool = Bool() setAsReg () init False
 
-  val fifo_pop_pipe: Stream[Bits] = fifo.io.pop.m2sPipe()
+  val fifo_pop_pipe: Stream[Bits] = io.bitmap_in.m2sPipe()
 
   val btm_low_1_one_hot: Bits = ((bitmap_tmp.asUInt - 1).asBits ^ bitmap_tmp) & bitmap_tmp
   val btm_low_1_idx:     UInt = OHToUInt(btm_low_1_one_hot)
   val will_done:         Bool = ~((btm_low_1_one_hot ^ bitmap_reg_sent) ^ fifo_pop_pipe.payload).orR
 
-  io.bitmap_in <> fifo.io.push
 
   io.index_out.payload := btm_low_1_idx
   io.index_out.valid   := bitmap_reg_vld
@@ -37,8 +34,8 @@ case class BitmapProc(btm_w: Int = 128) extends Component {
     bitmap_reg_sent := 0
   } elsewhen (io.index_out.fire) {
     when(will_done) {
-      bitmap_reg_vld  := fifo.io.pop.valid
-      bitmap_tmp      := fifo.io.pop.payload
+      bitmap_reg_vld  := io.bitmap_in.valid
+      bitmap_tmp      := io.bitmap_in.payload
       bitmap_reg_sent := 0
     } otherwise {
       bitmap_tmp      := fifo_pop_pipe.payload ^ btm_low_1_one_hot ^ bitmap_reg_sent

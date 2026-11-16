@@ -19,7 +19,7 @@
 *.log
 *.gtkw
 
-sim_build
+sim_build*
 
 **/results.xml
 
@@ -40,3 +40,7 @@ combined_results.xml
 *.ron
 
 verilogGen/
+.venv/
+rtl
+src/test/pyuvm/wavekit_mcp.toml
+src/test/pyuvm/.mcp.json

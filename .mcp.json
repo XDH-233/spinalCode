@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wavekit": {
+      "command": "/Users/xiangdh/IdeaProjects/spinalCode/src/test/pyuvm/.venv/bin/wavekit-mcp",
+      "args": ["--config", "/Users/xiangdh/IdeaProjects/spinalCode/src/test/pyuvm/wavekit_mcp.toml"]
+    }
+  }
+}

@@ -1,6 +1,8 @@
 import spinal.core._
 import spinal.lib._
 
+import scala.language.postfixOps
+
 case class fifo(dw: Int, dp: Int) extends Component {
   val io = new Bundle {
     val fifo_error_enable = in Bool ()
@@ -109,7 +111,7 @@ case class fifos() extends Component {
     )
   scConfigList.foreach { case (dw, dp) =>
     val dpStr     = if (dp % 1024 == 0) s"${dp / 1024}Kx" else s"${dp}x"
-    val fifo_inst = fifo(dw, dp).setDefinitionName("fifo" + dpStr + dw.toString())
+    val fifo_inst = fifo(dw, dp).setDefinitionName("fifo" + dpStr + dw.toString)
     fifo_inst.io.fifo_error_enable.clear()
     fifo_inst.io.core_clock.clear()
     fifo_inst.io.data.clearAll()
@@ -129,7 +131,7 @@ case class fifos() extends Component {
   )
   dcConfigList.foreach { case (dw, dp) =>
     val dpStr       = if (dp % 1024 == 0) s"${dp / 1024}Kx" else s"${dp}x"
-    val dcfifo_inst = dcfifo(dw, dp).setDefinitionName("dcfifo" + dpStr + dw.toString())
+    val dcfifo_inst = dcfifo(dw, dp).setDefinitionName("dcfifo" + dpStr + dw.toString)
     dcfifo_inst.io.fifo_error_enable.clear()
     dcfifo_inst.io.core_clock.clear()
     dcfifo_inst.io.data.clearAll()

@@ -48,3 +48,12 @@ def random_n_percent(n, mean=10, sigma=None): # 0 < n < 100
 
     for on_time, off_time in zip(gaussian(on_duration, sigma), gaussian(off_duration, sigma)):
         yield int(abs(on_time)), int(abs(off_time))
+
+
+class EnumDict(IntEnum):
+    """IntEnum with a to_dict() classmethod that returns {value: name} mapping."""
+
+    @classmethod
+    def to_dict(cls) -> dict:
+        """Return a dict mapping numeric value -> name string."""
+        return {member.value: member.name for member in cls}
