@@ -64,8 +64,13 @@ export PATH="$HOME/Library/Python/3.9/bin:$PATH"   # 提供 cocotb-config
 cd src/test/pyuvm/<DUT> && make SIM=verilator
 ```
 
-环境：cocotb 2.0.1 + pyuvm 4.0.1，装在系统 Python **3.9**
+环境：cocotb 2.0.1 + pyuvm 4.0.1 + cocotb-bus 0.3.0，装在系统 Python **3.9**
 （`/Library/Developer/CommandLineTools/usr/bin/python3`），不在默认 PATH 里。
+Verilator 需 ≥ **5.036**（cocotb 2.0 的硬性要求）；本机通过 Homebrew 历史 formula
+（tap `local/verilator5036`）安装 5.036，不是最新的 5.054。
+pyuvm 4.0.1 支持 cocotb 2.0，并保留 `utility_classes` 等旧 API；
+cocotb-bus 0.3.0 兼容 cocotb 2.0。DataCache / AvstWidthCov 用例已验证通过。
+`cocotb-coverage` 已卸载（仓库测试没有使用它），`pip check` 无冲突。
 
 **坑（Python 3.9 / cocotb 2.0 适配）**：
 
@@ -74,6 +79,10 @@ cd src/test/pyuvm/<DUT> && make SIM=verilator
   `AttributeError: module 'cocotb' has no attribute 'triggers'`
 - Python 3.9 没有 `int.bit_count()`（3.10+ 才有），用 `bin(v).count("1")`
 - 纯组合逻辑 DUT（无 clk）不需要启动时钟，赋值后 `await Timer(1, unit="ns")` 再读
+- cocotb 2.0 移除了 `cocotb.utils.hexdump`；老用例（如 AvstWidthCov）需换成本地实现
+- `src/test/pyuvm/lib/__init__.py` 需要显式 `from enum import IntEnum`，不能依赖 pyuvm 的隐式导入
+- Verilator 5.036 对旧 RTL 的 width warning 会直接报错；需要
+  `-Wno-WIDTHEXPAND -Wno-WIDTHTRUNC`（或 `-Wno-fatal`）
 
 ## Verilator 独立仿真（不经 cocotb）
 

@@ -12,7 +12,10 @@ export PYTHONPATH := $(CWD)/..:${PYTHONPATH}
 ifeq ($(SIM), verilator)
     # Enable processing of #delay statements
     COMPILE_ARGS += --timing -sv
-    EXTRA_ARGS +=  --trace-fst --trace-structs
+    ifeq ($(WAVES),1)
+        VERILATOR_TRACE = 1
+        COMPILE_ARGS += --trace-fst
+    endif
 else ifeq ($(SIM), vcs)
 	COMPILE_ARGS = +v2k \
 		-full64 \

@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PopCountTree · 分治加法树 popcount 交互演示</title>
+<style>
+/* ===== 设计变量（亮/暗双主题） ===== */
+:root{
+  --page:#f9f9f7; --surface:#fcfcfb; --surface2:#f0efe9;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s8:#e34948;
+  --s3dark:#0e7a56; --s1seq:#1c5cab;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --warn-ink:#8a5b00; --crit-ink:#d03b3b;
+  --onFill:#ffffff;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    --page:#0d0d0d; --surface:#1a1a19; --surface2:#262624;
+    --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s8:#e66767;
+    --s3dark:#199e70; --s1seq:#184f95;
+    --warn-ink:#fab219; --crit-ink:#e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0d0d0d; --surface:#1a1a19; --surface2:#262624;
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s8:#e66767;
+  --s3dark:#199e70; --s1seq:#184f95;
+  --warn-ink:#fab219; --crit-ink:#e66767;
+  color-scheme: dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--page); color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.5;
+  padding:18px 20px 40px;
+}
+h1{font-size:20px;margin:0}
+h2{font-size:13px;margin:0 0 10px;letter-spacing:.02em}
+.sub{color:var(--ink2);margin:4px 0 0;font-size:13px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.mono{font-variant-numeric:tabular-nums}
+
+header.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:12px}
+header.top .tag{color:var(--ink2);font-weight:400;font-size:13px;margin-left:10px}
+a{color:var(--s1)}
+
+button{
+  font:inherit;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--axis);border-radius:6px;
+  padding:5px 12px;cursor:pointer;
+}
+button:hover{border-color:var(--ink2)}
+button.primary{background:var(--s1);color:#fff;border-color:var(--s1)}
+button.primary:hover{border-color:var(--s1);filter:brightness(1.08)}
+button.on{background:var(--s1);color:#fff;border-color:var(--s1)}
+button:disabled{opacity:.38;cursor:not-allowed}
+input[type=number],input[type=text],select{
+  font:inherit;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--axis);border-radius:6px;padding:4px 8px;
+}
+input[type=number]{width:70px}
+input[type=text]{min-width:120px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.params{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.params label{display:flex;align-items:center;gap:6px;color:var(--ink2)}
+
+.grid{
+  display:grid;
+  grid-template-columns:minmax(560px,6.6fr) minmax(280px,3.2fr) minmax(300px,3.4fr);
+  gap:14px;align-items:start;
+}
+@media (max-width:1250px){
+  .grid{grid-template-columns:1fr 1fr}
+  #treeCard{grid-column:1/-1}
+}
+@media (max-width:820px){
+  .grid{grid-template-columns:1fr}
+  #treeCard{grid-column:auto}
+}
+
+.hint{color:var(--muted);font-weight:400;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--axis);border-radius:6px;overflow:hidden}
+.seg button{border:none;border-radius:0;background:var(--surface2);padding:4px 10px;min-width:36px}
+.seg button.on{background:var(--s1);color:#fff}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.note{color:var(--muted);font-size:12px;margin-top:6px}
+.ctl{border-top:1px solid var(--grid);padding-top:10px;margin-top:12px}
+.ctl:first-of-type{border-top:none;padding-top:0;margin-top:0}
+.ctl h3{font-size:12px;margin:0 0 6px;color:var(--ink2);font-weight:600;letter-spacing:.03em}
+
+/* ===== 树 ===== */
+#treeWrap{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:4px 2px 0;overflow-x:auto;
+}
+#treeSvg{width:100%;height:auto;display:block;min-width:720px}
+.edge{stroke:var(--axis);stroke-width:1.4;fill:none}
+.edge.done{stroke:var(--s1);stroke-width:1.8}
+.edge.hot{stroke:var(--s2);stroke-width:2.6;stroke-dasharray:6 4;animation:dash .55s linear 5}
+@keyframes dash{to{stroke-dashoffset:-20}}
+.pairband{fill:var(--grid);opacity:.55}
+.pairband.single{fill:none;stroke:var(--warn);stroke-dasharray:4 3;opacity:.9}
+.node-box{fill:var(--surface);stroke:var(--axis);stroke-width:1.4}
+.node-box.pend{stroke-dasharray:4 4}
+.node-box.done{stroke:var(--s1)}
+.node-box.now{stroke:var(--s2);stroke-width:2.6;animation:nodeflash .7s ease}
+@keyframes nodeflash{0%{fill:var(--s3)}100%{fill:var(--surface)}}
+.node-box.rootdone{stroke:var(--s3);stroke-width:2.8}
+.node-box.hl{stroke:var(--s2);stroke-width:2.4}
+.node-box.hlroot{stroke:var(--s2);stroke-width:3;filter:drop-shadow(0 0 6px var(--s2))}
+.nodeval{font-size:15px;font-weight:700;text-anchor:middle;dominant-baseline:middle;fill:var(--ink)}
+.nodeval.pend{fill:var(--muted)}
+.nodebin{font-size:9px;text-anchor:middle;dominant-baseline:middle;fill:var(--ink2)}
+.passmark{font-size:11px;font-weight:700;fill:var(--warn-ink)}
+.lvlname{font-size:11px;font-weight:700;fill:var(--ink2)}
+.lvlw{font-size:9px;fill:var(--muted)}
+.outlbl{font-size:13px;font-weight:700;text-anchor:middle;fill:var(--ink)}
+.outlbl.done{fill:var(--s3dark)}
+.outsub{font-size:9.5px;text-anchor:middle;fill:var(--muted)}
+.bitcell{fill:var(--surface);stroke:var(--axis);stroke-width:1.2;cursor:pointer;transition:fill .15s,stroke .15s}
+.bitcell:hover{stroke:var(--s2)}
+.bitcell.on{fill:var(--s1);stroke:var(--s1)}
+.bitcell.hlbit{stroke:var(--s2);stroke-width:2.6}
+.bittxt{font-size:14px;font-weight:700;text-anchor:middle;dominant-baseline:middle;fill:var(--ink);pointer-events:none}
+.bittxt.on{fill:var(--onFill)}
+.bitidx{font-size:8.5px;text-anchor:middle;fill:var(--muted);pointer-events:none}
+
+#legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;color:var(--ink2);font-size:12px}
+#legend .chip{display:inline-flex;align-items:center;gap:5px}
+#legend .sw{display:inline-block;width:12px;height:12px;border-radius:4px;border:1px solid var(--border)}
+.nodeinfo{
+  margin-top:10px;background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:7px 10px;font-size:12.5px;color:var(--ink2);min-height:44px;
+}
+.nodeinfo b{color:var(--ink)}
+.nodeinfo .mono{color:var(--ink)}
+
+/* ===== 输入与指标 ===== */
+.iorow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.iorow label{display:flex;align-items:center;gap:6px;color:var(--ink2);flex:1}
+.iorow input{flex:1;min-width:110px}
+#binView{font-size:11px;color:var(--ink2);word-break:break-all;margin-bottom:8px}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.stat{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;min-width:0}
+.stat .k{display:block;font-size:11px;color:var(--muted)}
+.stat .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.stat .s{display:block;font-size:10.5px;color:var(--ink2);margin-top:1px}
+table.lvtbl{width:100%;border-collapse:collapse;font-size:11.5px}
+table.lvtbl th{text-align:left;color:var(--muted);font-weight:600;padding:3px 4px;border-bottom:1px solid var(--grid)}
+table.lvtbl td{padding:3px 4px;border-bottom:1px solid var(--grid);vertical-align:top}
+table.lvtbl tr.cur td{background:var(--surface2)}
+table.lvtbl td.vals{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink2);line-height:1.45;word-break:break-word}
+table.lvtbl td .w{color:var(--muted);font-size:10px;margin-left:3px}
+.passnote{font-size:10.5px;color:var(--muted);margin-top:4px}
+
+/* ===== 控制面板 ===== */
+#stageRow{display:flex;align-items:baseline;gap:8px}
+#stageRow .t{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+#stageRow .lbl{color:var(--ink2)}
+#prog{display:flex;gap:4px;margin:8px 0 10px}
+.pseg{
+  flex:1;height:22px;border-radius:5px;border:1px solid var(--axis);
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;
+}
+.pseg.done{background:var(--s1);border-color:var(--s1);color:#fff}
+.pseg.next{border-color:var(--s2);color:var(--s2);font-weight:700}
+.clockrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.clockrow input[type=range]{flex:1;min-width:90px;accent-color:var(--s1)}
+.scn{display:flex;flex-direction:column;gap:6px}
+.scn button{text-align:left;line-height:1.35}
+.scn button .sd{display:block;color:var(--muted);font-size:11px}
+
+table.sig{width:100%;border-collapse:collapse;font-size:12.5px}
+table.sig td{padding:3px 6px;border-bottom:1px solid var(--grid)}
+table.sig td:first-child{color:var(--ink2);white-space:nowrap}
+table.sig td.v{text-align:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+table.sig tr:last-child td{border-bottom:none}
+
+details{font-size:12.5px;color:var(--ink2)}
+details summary{cursor:pointer;color:var(--ink);font-weight:600}
+details p{margin:6px 0}
+details pre{
+  margin:6px 0;padding:8px 10px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:6px;overflow-x:auto;
+  font-size:11.5px;line-height:1.5;color:var(--ink2);
+}
+details code{background:var(--surface2);padding:0 4px;border-radius:4px}
+
+/* ===== 日志 ===== */
+.logCard{margin-top:14px}
+#logBox{
+  background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  height:220px;overflow-y:auto;padding:8px 12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;
+}
+.line{padding:1px 0;display:flex;gap:8px;align-items:baseline}
+.line .t{color:var(--muted);flex:none;width:44px;font-variant-numeric:tabular-nums}
+.line .tag{flex:none;font-weight:700}
+.k-info{color:var(--ink2)} .k-scn{color:var(--ink2);font-style:italic}
+.k-init .tag{color:var(--s1)} .k-input .tag{color:var(--s1seq)}
+.k-reset .tag{color:var(--muted)} .k-step .tag{color:var(--s2)}
+.k-done .tag{color:var(--s3dark)} .k-warn .tag{color:var(--warn-ink)}
+.logHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.logHead h2{margin:0}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>PopCountTree <span class="tag">SpinalHDL · src/main/scala/PopulationCount.scala</span></h1>
+    <p class="sub">分治加法树 popcount — 两两半加 → 逐级合并 → 纯组合输出；逐级演算 + 节点悬停查看局部计数 · <a href="PopulationCount.md">实现说明</a></p>
+  </div>
+  <button id="themeBtn" title="切换亮/暗主题">主题</button>
+</header>
+
+<section class="card params">
+  <label>输入位宽 inputNum
+    <input type="number" id="pN" min="1" max="32" value="16">
+  </label>
+  <div class="seg" id="nPresets">
+    <button data-n="4">4</button>
+    <button data-n="5" title="奇数位宽：观察落单透传">5</button>
+    <button data-n="8">8</button>
+    <button data-n="16" class="on">16</button>
+    <button data-n="32">32</button>
+  </div>
+  <span class="hint">RTL 支持任意 inputNum ≥ 1；演示上限 32 以保证节点可读。修改 N 会重置并生成随机位串。</span>
+</section>
+
+<main class="grid">
+
+  <section class="card" id="treeCard">
+    <h2>加法树 <span class="hint">叶序 = asBools 顺序（bit0 在左，bit0 与 bit1 配对）；点击底部 bit 可翻转</span></h2>
+    <div id="treeWrap"><svg id="treeSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div id="legend">
+      <span class="chip"><span class="sw" style="background:var(--surface);border-color:var(--axis)"></span>bit = 0</span>
+      <span class="chip"><span class="sw" style="background:var(--s1)"></span>bit = 1</span>
+      <span class="chip"><span class="sw" style="background:var(--surface);border-color:var(--s1)"></span>已计算节点</span>
+      <span class="chip"><span class="sw" style="background:var(--surface);border-color:var(--s2)"></span>本级刚计算</span>
+      <span class="chip"><span class="sw" style="background:var(--surface);border-color:var(--axis);border-style:dashed"></span>未计算</span>
+      <span class="chip"><span class="sw" style="background:var(--warn)"></span>* 落单透传</span>
+      <span class="chip"><span class="sw" style="background:var(--surface);border-color:var(--s3);border-width:2px"></span>最终 count</span>
+    </div>
+    <div id="nodeInfo" class="nodeinfo">悬停任意节点：查看它覆盖的 bit 范围、局部计数和运算过程；点击底部 bit 可翻转输入。</div>
+  </section>
+
+  <section class="card" id="inputCard">
+    <h2>位串输入 <span class="hint">树中叶序为 bit0 → bitN-1</span></h2>
+    <div class="iorow">
+      <label>bits_in hex <input type="text" id="hexIn" class="mono" spellcheck="false" autocomplete="off"></label>
+    </div>
+    <div id="binView" class="mono"></div>
+    <div class="btnrow">
+      <button id="randBtn">🎲 随机</button>
+      <button data-set="ones">全 1</button>
+      <button data-set="zeros">全 0</button>
+      <button data-set="alt">棋盘</button>
+    </div>
+    <div class="note">修改输入会停止自动演算并回到阶段 0。</div>
+
+    <h2 style="margin:18px 0 10px">关键指标</h2>
+    <div class="statgrid">
+      <div class="stat"><span class="k">inputNum</span><span class="v" id="statN">—</span></div>
+      <div class="stat"><span class="k">count 位宽</span><span class="v" id="statW">—</span><span class="s" id="statWSub"></span></div>
+      <div class="stat"><span class="k">树层级 D</span><span class="v" id="statD">—</span><span class="s" id="statDSub"></span></div>
+      <div class="stat"><span class="k">加法单元</span><span class="v" id="statAdd">—</span><span class="s" id="statAddSub"></span></div>
+      <div class="stat"><span class="k">当前 count</span><span class="v" id="statCount">—</span><span class="s" id="statCountSub"></span></div>
+      <div class="stat"><span class="k">参考 popcount</span><span class="v" id="statRef">—</span><span class="s" id="statMatch"></span></div>
+    </div>
+
+    <h2>逐级节点值 <span class="hint">* = 落单透传</span></h2>
+    <div id="levelTbl"></div>
+  </section>
+
+  <section class="card" id="ctrlCard">
+    <div id="stageRow"><span class="t" id="dStage">0</span><span class="lbl" id="stageTotal">/ 0 级已演算</span></div>
+    <div id="prog"></div>
+    <div class="btnrow">
+      <button class="primary" id="nextBtn">▶ 下一级</button>
+      <button id="autoBtn">⏩ 全部演算</button>
+      <button id="resetBtn">⟲ 重置演算</button>
+    </div>
+    <div class="clockrow">
+      <span class="hint">速度</span>
+      <input type="range" id="speed" min="0.5" max="10" step="0.5" value="3" title="自动演算速度">
+      <span class="mono" id="speedLbl">×3</span>
+    </div>
+    <div class="note" id="stageNote"></div>
+
+    <div class="ctl">
+      <h3>演示场景（自动播放）</h3>
+      <div class="scn">
+        <button id="scn1"><b>① 逐级演算</b><span class="sd">N=16, bits_in=0xB6A3（popcount=9）→ 观察半加与逐级合并</span></button>
+        <button id="scn2"><b>② 非 2 的幂 / 奇数位宽</b><span class="sd">N=5, bits_in=5'b10110 → 落单透传 + 末级 4bit resize 到 3bit</span></button>
+        <button id="scn3"><b>③ 全 1 饱和</b><span class="sd">N=16, 全 1 → 每级值 2 → 4 → 8 → 16，count 恰好用满 5bit</span></button>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <h3>信号监视（组合逻辑，实时）</h3>
+      <table class="sig">
+        <tr><td>bits_in</td><td class="v" id="sBits"></td></tr>
+        <tr><td>stage</td><td class="v" id="sStage"></td></tr>
+        <tr><td>count</td><td class="v" id="sCount"></td></tr>
+        <tr><td>count_ref</td><td class="v" id="sRef"></td></tr>
+        <tr><td>match</td><td class="v" id="sMatch"></td></tr>
+        <tr><td>内部末级 / count 位宽</td><td class="v" id="sWidth"></td></tr>
+      </table>
+    </div>
+
+    <div class="ctl">
+      <details>
+        <summary>算法说明（与 RTL 行为对应）</summary>
+        <p><b>级 0 半加</b>：把相邻两个 bit 合成 2bit 计数。<code>cnt(0) := a ^ b</code>，<code>cnt(1) := a & b</code>，即 <code>{a&amp;b, a^b}</code>。奇数个输入时最后一个 bit 直接转成 2bit 数。</p>
+        <p><b>逐级合并</b>：<code>nodes.grouped(2).map { case Seq(a,b) =&gt; a +^ b; case Seq(a) =&gt; a.resize(a.getWidth+1) }</code>。每级节点数减半、位宽加一；落单节点透传但仍加宽，保证整层位宽一致。</p>
+        <p><b>末尾 resize</b>：树内部末级位宽为 <code>D+1</code>，输出位宽为 <code>log2Up(N+1)</code>。非 2 的幂时内部多 1 位，末尾 <code>resize</code> 截断；最大计数 <code>N</code> 一定能装进输出位宽。</p>
+        <p><b>纯组合</b>：RTL 没有 clk / rst。这里的“级”是组合传播模型，不是时钟周期；分步只是为了让数据依赖可见。</p>
+        <pre>级 0:  cnt(0) := a ^ b
+        cnt(1) := a &amp; b
+
+合并:   nodes = nodes.grouped(2).map {
+          case Seq(a, b) =&gt; a +^ b          // 位宽 +1
+          case Seq(a)    =&gt; a.resize(a.getWidth + 1)
+        }
+
+输出:   io.count := nodes.head.resize(io.count.getWidth bits)</pre>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<section class="card logCard">
+  <div class="logHead">
+    <h2>日志 · 演算控制台</h2>
+    <button id="clearLog">清空</button>
+  </div>
+  <div id="logBox"></div>
+</section>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+/* ================= 参数与状态 ================= */
+const MAX_N = 32;
+let N = 16;
+let bits = [];
+let levels = [];
+let stage = 0;
+let justComputed = -1;
+let autoTimer = null;
+let speed = 3;
+const LOG = [];
+
+const DEFAULT_INFO = '悬停任意节点：查看它覆盖的 bit 范围、局部计数和运算过程；点击底部 bit 可翻转输入。';
+
+/* ================= 工具 ================= */
+const popcount = arr => arr.reduce((a, b) => a + b, 0);
+const clampN = n => Math.max(1, Math.min(MAX_N, Math.floor(n) || 1));
+const bin = (v, w) => v.toString(2).padStart(w, "0");
+const outWidth = n => Math.ceil(Math.log2(n + 1));
+const Wout = () => outWidth(N);
+const internalW = () => levels.length + 1;
+const isPass = n => !!n.pass;
+
+function toHex(arr) {
+  let v = 0;
+  for (let i = 0; i < arr.length; i++) if (arr[i]) v += Math.pow(2, i);
+  return "0x" + v.toString(16).toUpperCase().padStart(Math.ceil(arr.length / 4), "0");
+}
+
+function hexToBits(s, n) {
+  const raw = String(s).trim();
+  const clean = raw.replace(/^0x/i, "").replace(/[^0-9a-f]/gi, "");
+  if (!clean) return /^(0x)?$/i.test(raw) ? Array(n).fill(0) : null;
+  const v = parseInt(clean.slice(-8), 16);
+  if (Number.isNaN(v)) return null;
+  const arr = [];
+  for (let i = 0; i < n; i++) arr.push(Math.floor(v / Math.pow(2, i)) % 2);
+  return arr;
+}
+
+function binGrouped(arr) {
+  const s = arr.slice().reverse().join("");
+  const parts = [];
+  for (let i = s.length; i > 0; i -= 4) parts.unshift(s.slice(Math.max(0, i - 4), i));
+  return parts.join("_");
+}
+
+/* ================= 模型 ================= */
+function buildLevels() {
+  const L = [];
+  let prev = [];
+  for (let i = 0; i < N; i += 2) {
+    const lo = i, hi = Math.min(i + 1, N - 1);
+    prev.push({ lo, hi, kids: [], val: null, pass: hi === lo });
+  }
+  L.push(prev);
+  while (prev.length > 1) {
+    const cur = [];
+    for (let j = 0; j < prev.length; j += 2) {
+      const kids = prev.slice(j, j + 2);
+      cur.push({ lo: kids[0].lo, hi: kids[kids.length - 1].hi, kids, val: null, pass: kids.length === 1 });
+    }
+    L.push(cur);
+    prev = cur;
+  }
+  L.forEach((nodes, l) => nodes.forEach((n, i) => {
+    n.l = l;
+    n.i = i;
+    n.w = l + 2;
+    n.desc = [];
+    for (let x = n.lo; x <= n.hi; x++) n.desc.push(x);
+  }));
+  return L;
+}
+
+function evalLevel(l) {
+  if (l === 0) {
+    levels[0].forEach(n => {
+      n.val = bits[n.lo] + (n.hi > n.lo ? bits[n.hi] : 0);
+    });
+  } else {
+    levels[l].forEach(n => {
+      n.val = n.kids.length === 2 ? n.kids[0].val + n.kids[1].val : n.kids[0].val;
+    });
+  }
+}
+
+function adderCounts() {
+  const ha = Math.floor(N / 2);
+  let fa = 0;
+  for (let l = 0; l < levels.length - 1; l++) fa += Math.floor(levels[l].length / 2);
+  return { ha, fa };
+}
+
+function descendants(n) {
+  const out = [];
+  const stack = [n];
+  while (stack.length) {
+    const x = stack.pop();
+    out.push(x);
+    (x.kids || []).forEach(k => stack.push(k));
+  }
+  return out;
+}
+
+/* ================= 日志 ================= */
+function log(kind, text) {
+  LOG.push({ kind, text });
+  if (LOG.length > 300) LOG.shift();
+  const box = $("#logBox");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
+  const div = document.createElement("div");
+  div.className = "line k-" + kind;
+  const tag = {
+    info: "[INFO]", init: "[INIT]", input: "[INPUT]", reset: "[RESET]",
+    step: "[STEP]", done: "[DONE]", warn: "[WARN]", scn: "[SCN]"
+  }[kind] || "[INFO]";
+  div.innerHTML = `<span class="t">S${stage}</span><span class="tag">${tag}</span><span>${text}</span>`;
+  box.appendChild(div);
+  while (box.childElementCount > 300) box.firstElementChild.remove();
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+/* ================= 布局 ================= */
+function layout() {
+  const W = 1100, marginL = 64, marginR = 28, marginTop = 64;
+  const d = levels.length;
+  const rowH = d >= 5 ? 74 : 82;
+  const nodeH = 44;
+  const span = (W - marginL - marginR) / N;
+  const inputCY = marginTop + (d - 1) * rowH + Math.min(80, rowH);
+  const H = inputCY + 44 + 28;
+  const maxNodes = levels[0].length;
+  const spacing = (W - marginL - marginR) / maxNodes;
+  const nodeW = Math.max(34, Math.min(84, spacing * 0.86));
+  const cellW = Math.max(14, Math.min(42, span * 0.74));
+  const cellH = 32;
+  return { W, H, marginL, marginR, marginTop, rowH, nodeH, span, inputCY, maxNodes, nodeW, cellW, cellH, d };
+}
+
+/* ================= 渲染：树 ================= */
+function renderTree() {
+  const L = layout();
+  const { W, H, marginTop, rowH, nodeH, span, inputCY, nodeW, cellW, cellH } = L;
+  const d = levels.length;
+  const yL = l => marginTop + (d - 1 - l) * rowH;
+  const leafX = i => L.marginL + (i + 0.5) * span;
+  const nodeX = n => (leafX(n.lo) + leafX(n.hi)) / 2;
+
+  let s = `<svg id="treeSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="popcount 加法树">`;
+
+  /* 输出标签 */
+  const doneAll = stage === d;
+  const cv = doneAll ? levels[d - 1][0].val : null;
+  const outTxt = doneAll ? `count = ${cv}` : `count = —`;
+  const outSub = doneAll
+    ? `${Wout()}'b${bin(cv, Wout())} · 内部末级 ${internalW()}'b${bin(cv, internalW())}${internalW() > Wout() ? " → resize 截断" : ""}`
+    : `count[${Wout() - 1}:0] 等待末级 · 还差 ${d - stage} 级`;
+  s += `<text x="${W / 2}" y="16" class="outlbl${doneAll ? " done" : ""}">${outTxt}</text>`;
+  s += `<text x="${W / 2}" y="31" class="outsub">${outSub}</text>`;
+  s += `<line x1="${W / 2}" y1="36" x2="${W / 2}" y2="${yL(d - 1) - nodeH / 2}" class="edge${doneAll ? " done" : ""}"/>`;
+
+  /* 级 0 分组底纹 */
+  levels[0].forEach(n => {
+    const x0 = leafX(n.lo) - cellW / 2 - 3;
+    const x1 = leafX(n.hi) + cellW / 2 + 3;
+    const cls = n.pass ? "pairband single" : "pairband";
+    s += `<rect x="${x0}" y="${inputCY - cellH / 2 - 4}" width="${Math.max(4, x1 - x0)}" height="${cellH + 8}" rx="7" class="${cls}"/>`;
+  });
+
+  /* 边：级 l -> 级 l-1 */
+  for (let l = 1; l < d; l++) {
+    levels[l].forEach(n => {
+      n.kids.forEach(k => {
+        const hot = l === justComputed;
+        const done = l < stage;
+        s += `<line x1="${nodeX(n)}" y1="${yL(l) + nodeH / 2}" x2="${nodeX(k)}" y2="${yL(l - 1) - nodeH / 2}" class="edge${done ? " done" : ""}${hot ? " hot" : ""}"/>`;
+      });
+    });
+  }
+  /* 边：级 0 -> 输入 bit */
+  levels[0].forEach(n => {
+    for (let i = n.lo; i <= n.hi; i++) {
+      const hot = justComputed === 0;
+      const done = stage > 0;
+      s += `<line x1="${nodeX(n)}" y1="${yL(0) + nodeH / 2}" x2="${leafX(i)}" y2="${inputCY - cellH / 2}" class="edge${done ? " done" : ""}${hot ? " hot" : ""}"/>`;
+    }
+  });
+
+  /* 左侧级标签 */
+  for (let l = 0; l < d; l++) {
+    s += `<text x="10" y="${yL(l) - 2}" class="lvlname">级${l}</text>`;
+    s += `<text x="10" y="${yL(l) + 11}" class="lvlw">${l + 2}bit</text>`;
+  }
+  s += `<text x="10" y="${inputCY - 2}" class="lvlname">bits_in</text>`;
+  s += `<text x="10" y="${inputCY + 11}" class="lvlw">${N}bit</text>`;
+
+  /* 节点 */
+  levels.forEach((nodes, l) => {
+    nodes.forEach(n => {
+      const x = nodeX(n), y = yL(l);
+      const done = l < stage;
+      const now = l === justComputed;
+      const rootdone = done && l === d - 1;
+      let cls = "node-box";
+      cls += done ? " done" : " pend";
+      if (now) cls += " now";
+      if (rootdone) cls += " rootdone";
+      s += `<g data-node="${l}-${n.i}">`;
+      s += `<rect x="${x - nodeW / 2}" y="${y - nodeH / 2}" width="${nodeW}" height="${nodeH}" rx="8" class="${cls}"/>`;
+      if (done) {
+        s += `<text x="${x}" y="${y - 5}" class="nodeval">${n.val}</text>`;
+        s += `<text x="${x}" y="${y + 10}" class="nodebin">${n.w}'b${bin(n.val, n.w)}</text>`;
+      } else {
+        s += `<text x="${x}" y="${y - 5}" class="nodeval pend">—</text>`;
+        s += `<text x="${x}" y="${y + 10}" class="nodebin">${n.w}bit</text>`;
+      }
+      if (n.pass) s += `<text x="${x + nodeW / 2 - 8}" y="${y - nodeH / 2 + 12}" class="passmark">*</text>`;
+      s += `</g>`;
+    });
+  });
+
+  /* 输入 bit */
+  for (let i = 0; i < N; i++) {
+    const x = leafX(i), y = inputCY, on = bits[i] === 1;
+    s += `<g data-bit="${i}" style="cursor:pointer">`;
+    s += `<rect x="${x - cellW / 2}" y="${y - cellH / 2}" width="${cellW}" height="${cellH}" rx="5" class="bitcell${on ? " on" : ""}"/>`;
+    s += `<text x="${x}" y="${y + 1}" class="bittxt${on ? " on" : ""}">${bits[i]}</text>`;
+    s += `<text x="${x}" y="${y + cellH / 2 + 12}" class="bitidx">${i}</text>`;
+    s += `</g>`;
+  }
+
+  s += `</svg>`;
+  $("#treeWrap").innerHTML = s;
+  $("#nodeInfo").innerHTML = DEFAULT_INFO;
+}
+
+/* ================= 渲染：其余面板 ================= */
+function renderInputs() {
+  if (document.activeElement !== $("#hexIn")) $("#hexIn").value = toHex(bits);
+  $("#binView").textContent = `${N}'b${binGrouped(bits)}`;
+}
+
+function renderStats() {
+  const d = levels.length, w = Wout(), iw = internalW();
+  const { ha, fa } = adderCounts();
+  const cv = stage >= d ? levels[d - 1][0].val : null;
+  const ref = popcount(bits);
+  const match = cv !== null && cv === ref;
+  const serial = Math.max(0, N - 1);
+
+  $("#statN").textContent = `${N} bit`;
+  $("#statW").textContent = `${w} bit`;
+  $("#statWSub").textContent = iw > w ? `内部末级 ${iw}bit → resize` : `内部末级 ${iw}bit，等宽`;
+  $("#statD").textContent = d;
+  $("#statDSub").textContent = serial > 0 ? `串行 ${serial} 级 · ${(serial / d).toFixed(1)}×` : "单 bit，无需合并";
+  $("#statAdd").textContent = N - 1;
+  $("#statAddSub").textContent = `${ha} 半加 + ${fa} 全加`;
+  $("#statCount").textContent = cv === null ? "—" : cv;
+  $("#statCountSub").textContent = cv === null ? "等待末级" : `${w}'b${bin(cv, w)}`;
+  $("#statRef").textContent = ref;
+  const m = $("#statMatch");
+  m.textContent = cv === null ? "等待末级" : (match ? "✓ 与参考一致" : "✗ 不一致");
+  m.style.color = cv === null ? "var(--muted)" : (match ? "var(--s3dark)" : "var(--crit)");
+}
+
+function renderLevelTable() {
+  let h = '<table class="lvtbl"><thead><tr><th>级</th><th>节点</th><th>值（计算后）</th></tr></thead><tbody>';
+  let hasPass = false;
+  levels.forEach((nodes, l) => {
+    const done = l < stage;
+    const vals = done ? nodes.map(n => `${n.val}${n.pass ? "*" : ""}`).join(" ") : "—";
+    if (nodes.some(n => n.pass)) hasPass = true;
+    h += `<tr class="${l === stage - 1 && stage > 0 ? "cur" : ""}"><td>L${l}<span class="w">${l + 2}bit</span></td><td class="mono">${nodes.length}</td><td class="vals">${vals}</td></tr>`;
+  });
+  h += "</tbody></table>";
+  if (hasPass) h += '<div class="passnote">* 落单节点：直接透传，位宽仍 +1，不消耗加法器</div>';
+  $("#levelTbl").innerHTML = h;
+}
+
+function renderSignals() {
+  const d = levels.length, w = Wout(), iw = internalW();
+  const cv = stage >= d ? levels[d - 1][0].val : null;
+  const ref = popcount(bits);
+  $("#sBits").textContent = `${toHex(bits)} (${N}bit)`;
+  $("#sStage").textContent = `${stage} / ${d}`;
+  $("#sCount").textContent = cv === null ? "—" : `${cv} (${w}'b${bin(cv, w)})`;
+  $("#sRef").textContent = ref;
+  const m = $("#sMatch");
+  m.textContent = cv === null ? "—" : (cv === ref ? "✓" : "✗");
+  m.style.color = cv === null ? "var(--ink2)" : (cv === ref ? "var(--s3dark)" : "var(--crit)");
+  $("#sWidth").textContent = `${iw}bit / ${w}bit${iw > w ? " (resize)" : ""}`;
+}
+
+function renderControls() {
+  const d = levels.length;
+  $("#dStage").textContent = stage;
+  $("#stageTotal").textContent = `/ ${d} 级已演算`;
+
+  let p = "";
+  for (let l = 0; l < d; l++) {
+    const cls = l < stage ? "done" : (l === stage ? "next" : "");
+    p += `<div class="pseg ${cls}" title="级${l}：${levels[l].length} 节点 × ${l + 2}bit">L${l}</div>`;
+  }
+  $("#prog").innerHTML = p;
+
+  $("#nextBtn").disabled = stage >= d;
+  $("#autoBtn").textContent = autoTimer ? "⏸ 停止" : "⏩ 全部演算";
+  $("#autoBtn").classList.toggle("on", !!autoTimer);
+  $("#speedLbl").textContent = "×" + speed;
+
+  let note;
+  if (stage >= d) {
+    note = "演算完成：count 为纯组合输出，最后一个节点就是结果（无时钟、无复位）。";
+  } else if (stage === 0 && N === 1) {
+    note = "下一步：级0 — 只有 1 个 bit，直接转成 2bit 数（落单透传），随后 resize 到 1bit。";
+  } else if (stage === 0) {
+    note = "下一步：级0 — 每两个 bit 用半加器 {a&b, a^b} 得到 2bit 计数；奇数个输入时最后一个 bit 直接透传。";
+  } else if (stage === d - 1) {
+    note = "下一步：末级加法 — 两个子节点相加得到最终 count。";
+  } else {
+    note = `下一步：级${stage} — 将 ${levels[stage - 1].length} 个 ${stage + 1}bit 节点两两相加为 ${levels[stage].length} 个 ${stage + 2}bit 节点。`;
+  }
+  $("#stageNote").textContent = note;
+
+  $$("#nPresets button").forEach(b => b.classList.toggle("on", +b.dataset.n === N));
+  if (document.activeElement !== $("#pN")) $("#pN").value = N;
+}
+
+function render() {
+  renderTree();
+  justComputed = -1;
+  renderInputs();
+  renderStats();
+  renderLevelTable();
+  renderSignals();
+  renderControls();
+}
+
+/* ================= 节点悬停 ================= */
+function clearHl() {
+  $$("#treeSvg .hl").forEach(el => el.classList.remove("hl"));
+  $$("#treeSvg .hlbit").forEach(el => el.classList.remove("hlbit"));
+  $$("#treeSvg .hlroot").forEach(el => el.classList.remove("hlroot"));
+}
+
+function showNodeInfo(n) {
+  clearHl();
+  descendants(n).forEach(x => {
+    const g = document.querySelector(`#treeSvg [data-node="${x.l}-${x.i}"]`);
+    if (!g) return;
+    const r = g.querySelector("rect");
+    if (!r) return;
+    r.classList.add("hl");
+    if (x === n) r.classList.add("hlroot");
+  });
+  n.desc.forEach(i => {
+    const g = document.querySelector(`#treeSvg [data-bit="${i}"]`);
+    if (!g) return;
+    const r = g.querySelector("rect");
+    if (r) r.classList.add("hlbit");
+  });
+
+  let op;
+  if (n.l === 0) {
+    if (n.pass) {
+      op = `落单 bit${n.lo} 直接透传（值 ${bits[n.lo]}），位宽仍加宽到 ${n.w}bit，不消耗加法器`;
+    } else {
+      op = `半加 {a&amp;b, a^b}：bit${n.lo}=${bits[n.lo]}, bit${n.hi}=${bits[n.hi]} → ${n.val === null ? "未计算" : n.val}`;
+    }
+  } else if (n.pass) {
+    op = `落单子节点透传：${n.kids[0].val === null ? "—" : n.kids[0].val}，位宽加宽到 ${n.w}bit（无加法器）`;
+  } else {
+    op = `${n.kids[0].val === null ? "—" : n.kids[0].val} + ${n.kids[1].val === null ? "—" : n.kids[1].val} = ${n.val === null ? "未计算" : n.val}`;
+  }
+
+  const stat = n.val === null ? "未计算" : `值 ${n.val} · ${n.w}'b${bin(n.val, n.w)}`;
+  $("#nodeInfo").innerHTML = `<b>级${n.l} · 节点${n.i}</b>　覆盖 bit[${n.hi}:${n.lo}]　${stat}<br>${op}`;
+}
+
+$("#treeWrap").addEventListener("mouseover", e => {
+  const g = e.target.closest ? e.target.closest("[data-node]") : null;
+  if (!g) return;
+  const parts = g.dataset.node.split("-").map(Number);
+  showNodeInfo(levels[parts[0]][parts[1]]);
+});
+
+$("#treeWrap").addEventListener("mouseout", e => {
+  const g = e.target.closest ? e.target.closest("[data-node]") : null;
+  if (!g) return;
+  const to = e.relatedTarget;
+  if (to && g.contains(to)) return;
+  clearHl();
+  $("#nodeInfo").innerHTML = DEFAULT_INFO;
+});
+
+$("#treeWrap").addEventListener("click", e => {
+  const ng = e.target.closest ? e.target.closest("[data-node]") : null;
+  if (ng) {
+    const p = ng.dataset.node.split("-").map(Number);
+    showNodeInfo(levels[p[0]][p[1]]);
+    return;
+  }
+  const g = e.target.closest ? e.target.closest("[data-bit]") : null;
+  if (!g) return;
+  const i = +g.dataset.bit;
+  bits[i] = bits[i] ? 0 : 1;
+  resetStage(false);
+  log("input", `bit${i} → ${bits[i]} · bits_in=${toHex(bits)}，演算阶段已重置`);
+  render();
+});
+
+/* ================= 控制 ================= */
+function stopAuto() {
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+  renderControls();
+}
+
+function startAuto() {
+  if (stage >= levels.length) {
+    log("info", "已到末级；请先重置演算或修改输入");
+    return;
+  }
+  stopAuto();
+  autoTimer = setInterval(() => {
+    const ok = advanceStage();
+    if (!ok || stage >= levels.length) stopAuto();
+  }, Math.max(180, Math.round(1400 / speed)));
+  renderControls();
+}
+
+function advanceStage() {
+  if (stage >= levels.length) return false;
+  evalLevel(stage);
+  const l = stage;
+  stage++;
+  justComputed = l;
+  const ns = levels[l];
+  const vals = ns.map(x => `${x.val}${x.pass ? "*" : ""}`).join(" ");
+  const desc = l === 0 ? "级0 半加 {a&amp;b, a^b}" : (l === levels.length - 1 ? "末级加法" : `级${l} 合并 a +^ b`);
+  log("step", `${desc} · ${l + 2}bit × ${ns.length} 节点 → [${vals}]`);
+  if (stage === levels.length) {
+    const cv = ns[0].val;
+    const ref = popcount(bits);
+    log(cv === ref ? "done" : "warn",
+      `count = ${cv} (${Wout()}'b${bin(cv, Wout())}) · 参考=${ref} ${cv === ref ? "✓" : "✗"} · 内部末级 ${internalW()}'b${bin(cv, internalW())}${internalW() > Wout() ? " → resize" : ""} · 深度 ${levels.length} 级`);
+  }
+  render();
+  return true;
+}
+
+function nextStage() {
+  if (stage >= levels.length) {
+    log("info", "已到末级；请先重置演算或修改输入");
+    return;
+  }
+  stopAuto();
+  advanceStage();
+}
+
+function resetStage(shouldLog) {
+  stopAuto();
+  stage = 0;
+  justComputed = -1;
+  levels.forEach(nodes => nodes.forEach(n => { n.val = null; }));
+  if (shouldLog) log("reset", "演算阶段重置：所有节点回到未计算，仅保留 bits_in");
+}
+
+function setN(n, bitArr) {
+  N = clampN(n);
+  levels = buildLevels();
+  if (bitArr) {
+    bits = bitArr.slice(0, N);
+    while (bits.length < N) bits.push(0);
+  } else {
+    bits = Array.from({ length: N }, () => Math.random() < 0.5 ? 1 : 0);
+  }
+  stage = 0;
+  justComputed = -1;
+  stopAuto();
+  const { ha, fa } = adderCounts();
+  log("init", `inputNum=${N} · count 位宽 ${Wout()}bit · 树层级 ${levels.length} · ${ha} HA + ${fa} FA · 加法单元 ${N - 1}`);
+  render();
+}
+
+/* ================= 输入控件 ================= */
+$("#pN").addEventListener("change", e => setN(+e.target.value));
+$("#pN").addEventListener("blur", () => { $("#pN").value = N; });
+$$("#nPresets button").forEach(b => b.addEventListener("click", () => setN(+b.dataset.n)));
+
+$("#hexIn").addEventListener("change", e => {
+  const arr = hexToBits(e.target.value, N);
+  if (!arr) {
+    log("warn", "十六进制输入无效");
+    e.target.value = toHex(bits);
+    return;
+  }
+  bits = arr;
+  resetStage(false);
+  log("input", `hex 输入 → bits_in=${toHex(bits)}，演算阶段已重置`);
+  render();
+});
+$("#hexIn").addEventListener("blur", () => { $("#hexIn").value = toHex(bits); });
+
+$("#randBtn").addEventListener("click", () => {
+  bits = Array.from({ length: N }, () => Math.random() < 0.5 ? 1 : 0);
+  resetStage(false);
+  log("input", `随机 bits_in=${toHex(bits)}，演算阶段已重置`);
+  render();
+});
+
+$$("[data-set]").forEach(b => b.addEventListener("click", () => {
+  const m = b.dataset.set;
+  bits = Array.from({ length: N }, (_, i) => m === "ones" ? 1 : m === "zeros" ? 0 : (i % 2 === 0 ? 1 : 0));
+  resetStage(false);
+  const label = m === "ones" ? "全 1" : m === "zeros" ? "全 0" : "棋盘";
+  log("input", `${label} bits_in=${toHex(bits)}，演算阶段已重置`);
+  render();
+}));
+
+/* ================= 演算控件 ================= */
+$("#nextBtn").addEventListener("click", nextStage);
+$("#autoBtn").addEventListener("click", () => { autoTimer ? stopAuto() : startAuto(); });
+$("#resetBtn").addEventListener("click", () => { resetStage(true); render(); });
+$("#speed").addEventListener("input", e => {
+  speed = +e.target.value;
+  if (autoTimer) startAuto(); else renderControls();
+});
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && e.target === document.body) {
+    e.preventDefault();
+    nextStage();
+  }
+});
+
+/* ================= 场景 ================= */
+$("#scn1").addEventListener("click", () => {
+  setN(16, hexToBits("B6A3", 16));
+  log("scn", "场景①：N=16, bits_in=0xB6A3（popcount=9），逐级观察半加与合并");
+  startAuto();
+});
+$("#scn2").addEventListener("click", () => {
+  setN(5, hexToBits("16", 5));
+  log("scn", "场景②：N=5 非 2 的幂 — 观察落单节点透传，以及末级 4bit → count 3bit 的 resize 截断");
+  startAuto();
+});
+$("#scn3").addEventListener("click", () => {
+  setN(16, hexToBits("FFFF", 16));
+  log("scn", "场景③：N=16 全 1 饱和 — 每级节点值 2 → 4 → 8 → 16，count 恰好用满 5bit");
+  startAuto();
+});
+
+$("#clearLog").addEventListener("click", () => {
+  LOG.length = 0;
+  $("#logBox").innerHTML = "";
+});
+
+/* ================= 主题 ================= */
+const themeOrder = ["auto", "dark", "light"];
+let themeIdx = 0;
+function applyTheme() {
+  const t = themeOrder[themeIdx];
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  $("#themeBtn").textContent = "主题:" + t;
+}
+$("#themeBtn").addEventListener("click", () => {
+  themeIdx = (themeIdx + 1) % 3;
+  applyTheme();
+});
+applyTheme();
+
+/* ================= 启动 ================= */
+setN(16, hexToBits("B6A3", 16));
+log("info", "点击底部 bit 可翻转输入；空格 = 下一级；场景按钮会自动演算。");
+</script>
+</body>
+</html>

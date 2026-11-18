@@ -4,7 +4,11 @@ import pyuvm
 from cocotb.clock import Clock
 from cocotb.queue import Queue
 from cocotb.triggers import ClockCycles, RisingEdge
-from cocotb.utils import hexdump
+def hexdump(data):
+    """cocotb 2.0 移除了 cocotb.utils.hexdump，这里用简化版。"""
+    if isinstance(data, int):
+        data = data.to_bytes((data.bit_length() + 7) // 8 or 1, "big")
+    return " ".join(f"{b:02x}" for b in data) + "\n"
 from cocotb_bus.drivers.avalon import AvalonSTPkts as AvalonSTDriver
 from cocotb_bus.monitors.avalon import AvalonSTPkts as AvalonSTMonitor
 from pyuvm import *

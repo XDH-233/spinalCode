@@ -1,7 +1,7 @@
 # RadixIdTree 设计文档 —— radix-4 树形 ID 分配/回收管理器
 
 > 代码：`src/main/scala/radix_tree.scala`　|　测试：`src/test/pyuvm/radix_tree/`
-> 交互演示：`doc/radix_tree_interactive.html`
+> 交互演示：`docs/radix_tree/radix_tree_interactive.html`
 > 用途：替代整条 bitmap 扫描式的 id 管理（如 bitmap 取最低 1 分配 slot id 的方案）
 
 ## 1. 概述

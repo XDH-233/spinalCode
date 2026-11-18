@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PlruControl · 伪LRU替换控制 动态演示</title>
+<style>
+/* ===== 设计变量(基于 dataviz 校验调色板: 亮/暗双主题) ===== */
+:root{
+  --page:#f9f9f7; --surface:#fcfcfb; --surface2:#f0efe9;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s8:#e34948;
+  --s3dark:#0e7a56; --s1seq:#1c5cab;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --warn-ink:#8a5b00; --crit-ink:#d03b3b; --serious-ink:#b4552b;
+  --onFill:#ffffff;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    --page:#0d0d0d; --surface:#1a1a19; --surface2:#262624;
+    --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s8:#e66767;
+    --s3dark:#199e70; --s1seq:#184f95;
+    --warn-ink:#fab219; --crit-ink:#e66767; --serious-ink:#ec835a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0d0d0d; --surface:#1a1a19; --surface2:#262624;
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s8:#e66767;
+  --s3dark:#199e70; --s1seq:#184f95;
+  --warn-ink:#fab219; --crit-ink:#e66767; --serious-ink:#ec835a;
+  color-scheme: dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--page); color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.5;
+  padding:18px 20px 40px;
+}
+h1{font-size:20px;margin:0}
+h2{font-size:13px;margin:0 0 10px;text-transform:none;letter-spacing:.02em}
+.sub{color:var(--ink2);margin:4px 0 0;font-size:13px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.mono{font-variant-numeric:tabular-nums}
+
+header.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+header.top .tag{color:var(--ink2);font-weight:400;font-size:13px;margin-left:10px}
+
+button{
+  font:inherit;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--axis);border-radius:6px;
+  padding:5px 12px;cursor:pointer;
+}
+button:hover{border-color:var(--ink2)}
+button.primary{background:var(--s1);color:#fff;border-color:var(--s1)}
+button.primary:hover{border-color:var(--s1);filter:brightness(1.08)}
+button.on{background:var(--s1);color:#fff;border-color:var(--s1)}
+button:disabled{opacity:.38;cursor:not-allowed}
+input[type=number],select{
+  font:inherit;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--axis);border-radius:6px;padding:4px 8px;
+}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.params{display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.params label{display:flex;align-items:center;gap:6px;color:var(--ink2)}
+.params label.chk{cursor:pointer}
+.params label.chk input{accent-color:var(--s1)}
+
+.grid{display:grid;grid-template-columns:minmax(430px,5fr) minmax(300px,3.6fr) minmax(300px,3.4fr);gap:14px;align-items:start}
+@media (max-width:1150px){.grid{grid-template-columns:1fr}}
+
+.hint{color:var(--muted);font-weight:400;font-size:12px}
+
+/* ===== 树 ===== */
+#treeWrap{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 4px 2px}
+#treeSvg{width:100%;height:auto;display:block}
+.edge{stroke:var(--axis);stroke-width:1.5}
+.edge.hot{stroke:var(--s2);stroke-width:3;stroke-dasharray:7 5;animation:dash .5s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-12}}
+circle.bit0{fill:var(--surface2);stroke:var(--axis);stroke-width:1.5}
+circle.bit1{fill:var(--s1);stroke:var(--s1)}
+circle.onpath{stroke:var(--s2);stroke-width:2.5}
+circle.flip{animation:flip .55s ease}
+@keyframes flip{0%{stroke-width:6;filter:brightness(1.55)}100%{stroke-width:1.5;filter:none}}
+text.bittxt{font-size:15px;font-weight:700;text-anchor:middle;dominant-baseline:middle;fill:var(--ink)}
+text.bittxt.t1{fill:var(--onFill)}
+text.nidx{font-size:10px;text-anchor:middle;fill:var(--muted)}
+rect.leaf{fill:var(--surface);stroke:var(--axis);stroke-width:1.5;rx:8}
+rect.leaf.blocked{stroke:var(--warn);stroke-width:2}
+rect.leaf.died{stroke:var(--crit);stroke-width:2}
+rect.leaf.victim{stroke:var(--s2);stroke-width:3;stroke-dasharray:6 4;animation:victim 1s linear infinite}
+@keyframes victim{to{stroke-dashoffset:-20}}
+rect.leaf.fillflash{animation:leaffill .7s ease}
+@keyframes leaffill{0%{fill:var(--s3)}100%{fill:var(--surface)}}
+rect.leaf.hitflash{animation:leafhit .7s ease}
+@keyframes leafhit{0%{fill:var(--s1)}100%{fill:var(--surface)}}
+text.leafid{font-size:14px;font-weight:700;text-anchor:middle;fill:var(--ink)}
+text.leafst{font-size:11px;text-anchor:middle;fill:var(--ink2)}
+
+#legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;color:var(--ink2);font-size:12px}
+#legend .chip{display:inline-flex;align-items:center;gap:5px}
+#legend .sw{display:inline-block;width:12px;height:12px;border-radius:4px;border:1px solid var(--border)}
+#stateRow{margin-top:10px;font-size:13px;display:flex;gap:18px;flex-wrap:wrap}
+#stateRow b{font-variant-numeric:tabular-nums}
+
+/* ===== 缓存行卡片 ===== */
+#entries{display:flex;flex-direction:column;gap:8px}
+.entry{border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--surface2);cursor:pointer;position:relative}
+.entry:hover{border-color:var(--ink2)}
+.entry.sel{outline:2px solid var(--s1);outline-offset:1px}
+.entry.victim{outline:2px dashed var(--s2);outline-offset:1px}
+.ehead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.eid{font-weight:700;font-size:15px}
+.ebadges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.badge{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--border)}
+.badge.fill{color:var(--ink2)}
+.badge.blk{color:var(--warn-ink);border-color:var(--warn)}
+.badge.died{color:var(--crit-ink);border-color:var(--crit)}
+.badge.empty{color:var(--muted)}
+.abar{height:6px;background:var(--grid);border-radius:3px;margin-top:7px;overflow:hidden;position:relative}
+.abar>div{height:100%;background:var(--s1seq);border-radius:3px;transition:width .15s}
+.eage{font-size:11px;color:var(--ink2);margin-top:3px;display:flex;justify-content:space-between}
+.evtag{position:absolute;right:10px;bottom:6px;color:var(--s2);font-size:11px;font-weight:600}
+.evtag::before{content:"◀ "}
+
+/* ===== 控制面板 ===== */
+#ctrlCard{display:flex;flex-direction:column;gap:12px}
+.ctl h3{font-size:12px;margin:0 0 6px;color:var(--ink2);font-weight:600;letter-spacing:.03em}
+.ctl{border-top:1px solid var(--grid);padding-top:10px}
+.ctl:first-of-type{border-top:none;padding-top:0}
+#cycleRow{display:flex;align-items:baseline;gap:8px}
+#cycleRow .t{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+#cycleRow .lbl{color:var(--ink2)}
+.seg{display:inline-flex;border:1px solid var(--axis);border-radius:6px;overflow:hidden}
+.seg button{border:none;border-radius:0;background:var(--surface2)}
+.seg button.on{background:var(--s1);color:#fff}
+.idrow{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.idrow button{min-width:38px;padding:4px 6px;font-variant-numeric:tabular-nums}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.note{color:var(--muted);font-size:12px;margin-top:6px}
+.clockrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.clockrow input[type=range]{flex:1;min-width:90px;accent-color:var(--s1)}
+.scn{display:flex;flex-direction:column;gap:6px}
+.scn button{text-align:left;line-height:1.35}
+.scn button .sd{display:block;color:var(--muted);font-size:11px}
+
+table.sig{width:100%;border-collapse:collapse;font-size:12.5px}
+table.sig td{padding:3px 6px;border-bottom:1px solid var(--grid)}
+table.sig td:first-child{color:var(--ink2);white-space:nowrap}
+table.sig td.v{text-align:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+table.sig td.v.off{color:var(--crit-ink);font-weight:700}
+table.sig tr:last-child td{border-bottom:none}
+.pend-ind{font-size:12px;color:var(--s2);margin-top:4px}
+.pend-ind::before{content:"◉ "}
+
+details{font-size:12.5px;color:var(--ink2)}
+details summary{cursor:pointer;color:var(--ink);font-weight:600}
+details p{margin:6px 0}
+details code{background:var(--surface2);padding:0 4px;border-radius:4px}
+
+/* ===== 日志 ===== */
+.logCard{margin-top:14px}
+#logBox{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  height:230px;overflow-y:auto;padding:8px 12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.line{padding:1px 0;display:flex;gap:8px;align-items:baseline}
+.line .t{color:var(--muted);flex:none;width:52px;font-variant-numeric:tabular-nums}
+.line .tag{flex:none;font-weight:700}
+.k-info{color:var(--ink2)} .k-scn{color:var(--ink2);font-style:italic}
+.k-hit .tag{color:var(--s1)} .k-fill .tag{color:var(--s3dark)}
+.k-bp .tag{color:var(--serious-ink)} .k-rpl .tag{color:var(--s1)}
+.k-die .tag,.k-conflict .tag{color:var(--warn-ink)}
+.logHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.logHead h2{margin:0}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>PlruControl <span class="tag">SpinalHDL · src/main/scala/tool/PlruControl.scala</span></h1>
+    <p class="sub">树状伪 LRU(Pseudo-LRU)替换控制 — 树位翻转 · 驱逐寻路 · 替换阻塞/背压 · 老化看门狗,逐时钟周期动态示意</p>
+  </div>
+  <button id="themeBtn" title="切换亮/暗主题">主题</button>
+</header>
+
+<section class="card params">
+  <label>路数 cacheEntryNum
+    <select id="pN"><option value="4" selected>4</option><option value="8">8</option></select>
+  </label>
+  <label class="chk"><input type="checkbox" id="pBlk" checked> 替换阻塞 with_rpl_blk</label>
+  <label class="chk"><input type="checkbox" id="pAging"> 老化看门狗 with_aging</label>
+  <label>老化阈值 aging_cycles <input type="number" id="pTh" min="2" max="64" value="8" style="width:64px"></label>
+  <span class="hint">改动参数将重置仿真</span>
+</section>
+
+<main class="grid">
+
+  <section class="card" id="treeCard">
+    <h2>PLRU 二叉树 <span class="hint">state 位:0 → 优先驱逐左子树 · 1 → 优先驱逐右子树;寻路时若指向的子树全部阻塞则强制换边</span></h2>
+    <div id="treeWrap"><svg id="treeSvg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div id="legend">
+      <span class="chip"><span class="sw" style="background:var(--surface2);border-color:var(--axis)"></span>位=0</span>
+      <span class="chip"><span class="sw" style="background:var(--s1)"></span>位=1</span>
+      <span class="chip"><span class="sw" style="background:var(--s2)"></span>驱逐寻路(缺失时)</span>
+      <span class="chip"><span class="sw" style="background:var(--s3)"></span>本次填充</span>
+      <span class="chip"><span class="sw" style="background:var(--warn)"></span>🔒 替换中(阻塞)</span>
+      <span class="chip"><span class="sw" style="background:var(--crit)"></span>💀 老化死亡</span>
+      <span class="chip"><span class="sw" style="background:var(--surface);border-color:var(--s2)"></span>◀ plru_entry 驱逐目标</span>
+    </div>
+    <div id="stateRow" class="mono">
+      <span>state = <b id="dState"></b></span>
+      <span>plru_entry = <b id="dEntry"></b></span>
+    </div>
+  </section>
+
+  <section class="card" id="entryCard">
+    <h2>缓存行 <span class="hint">点击卡片选择访问目标路</span></h2>
+    <div id="entries"></div>
+  </section>
+
+  <section class="card" id="ctrlCard">
+    <div id="cycleRow"><span class="t" id="dCycle">0</span><span class="lbl">周期 t(老化计数器每个时钟沿递增)</span></div>
+
+    <div class="ctl">
+      <h3>访问注入 · update(Stream)</h3>
+      <div class="seg" id="accMode">
+        <button data-m="hit" class="on">命中 hit</button>
+        <button data-m="miss">缺失 miss</button>
+      </div>
+      <div class="idrow" id="idBtns"></div>
+      <div class="btnrow">
+        <button class="primary" id="injectBtn">注入访问(valid=1)</button>
+        <button id="cancelAcc">取消待发</button>
+      </div>
+      <div class="pend-ind" id="pendInd" hidden>待发:update.valid=1</div>
+      <div class="note">缺失时 id 被忽略,实际填充目标 = plru_entry;命中时 ready 恒为 1(即使目标路阻塞中)。</div>
+    </div>
+
+    <div class="ctl">
+      <h3>替换完成 · rpl_end(Flow,无背压)</h3>
+      <div class="idrow" id="rplBtns"></div>
+      <div class="btnrow"><button id="rplBtn">标记替换完成(下一时钟沿生效)</button></div>
+      <div class="note">与同一周期的缺失冲突(同路)时触发 WARNING,setWhen 优先 → 释放生效。</div>
+    </div>
+
+    <div class="ctl">
+      <h3>时钟</h3>
+      <div class="clockrow">
+        <button class="primary" id="tickBtn">⏱ Tick</button>
+        <button id="playBtn">▶ 自动</button>
+        <input type="range" id="speed" min="0.5" max="10" step="0.5" value="3" title="速度">
+        <span class="mono" id="speedLbl">×3</span>
+        <button id="resetBtn">⟲ 重置</button>
+      </div>
+      <div class="note">空格键 = Tick。空闲周期老化计数器照常递增。</div>
+    </div>
+
+    <div class="ctl">
+      <h3>演示场景(自动播放)</h3>
+      <div class="scn">
+        <button id="scn1"><b>① PLRU 轮转顺序</b><span class="sd">4 路无阻塞:顺序缺失填充 → 驱逐顺序 0→2→1→3,再命中翻转树位</span></button>
+        <button id="scn2"><b>② 替换阻塞与背压</b><span class="sd">填满 4 路全部阻塞 → 缺失被背压(ready=0)→ rpl_end 释放 → 强制驱逐唯一可用路</span></button>
+        <button id="scn3"><b>③ 老化死亡告警</b><span class="sd">替换迟迟未完成 → 计数超阈值 → WARNING 告警;命中只复位计数,不复活有效位</span></button>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <h3>信号监视(组合逻辑,实时)</h3>
+      <table class="sig">
+        <tr><td>update.valid</td><td class="v" id="sV"></td></tr>
+        <tr><td>update.payload</td><td class="v" id="sP"></td></tr>
+        <tr><td>update.ready</td><td class="v" id="sR"></td></tr>
+        <tr><td>update.fire</td><td class="v" id="sF"></td></tr>
+        <tr><td>rpl_end.valid / payload</td><td class="v" id="sRV"></td></tr>
+        <tr><td>plru_entry</td><td class="v" id="sEV"></td></tr>
+        <tr><td>no_more(全阻塞)</td><td class="v" id="sNM"></td></tr>
+        <tr><td>state</td><td class="v" id="sST"></td></tr>
+      </table>
+    </div>
+
+    <div class="ctl">
+      <details>
+        <summary>算法说明(与 RTL 行为对应)</summary>
+        <p><b>树状 PLRU</b>:N 路对应 N−1 个树位 <code>state</code>。命中:沿"根→叶子"路径把每个位指向<b>不含</b>该路的子树(该路变最近使用)。缺失:从根沿位走到叶子,即 <code>plru_entry</code> 驱逐路;填充后以驱逐路 id 更新树。</p>
+        <p><b>替换阻塞 with_rpl_blk</b>:缺失启动替换时阻塞该路(<code>plru.io.context.valids</code>),驱逐寻路永不到达阻塞路;rpl_end 释放。<code>no_more = ~valids.orR</code> 时,缺失的 <code>update.ready=0</code> → 背压(valid 保持)。</p>
+        <p><b>老化看门狗 with_aging</b>:每路一个计数器,每时钟沿 +1(仅已填充路),访问(命中该路或缺失填充该路)时清零;达到 <code>aging_cycles</code> 且老化有效位仍置位 → 断言 <code>WARNING: A cache line died</code>。<b>仅告警不动作</b>,由外部处理;有效位只在填充时置位、死亡时清除 —— 死亡后即使再次命中也不会重新置位(忠实模拟 RTL 的 setWhen/clearWhen 优先级)。</p>
+        <p><b>冲突断言</b>:同一周期 rpl_start 与 rpl_end 指向同一路 → <code>WARNING: Replace the replacing cache line</code>;由于 setWhen 后写优先,该路被释放。</p>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<section class="card logCard">
+  <div class="logHead">
+    <h2>日志 · 仿真控制台</h2>
+    <button id="clearLog">清空</button>
+  </div>
+  <div id="logBox"></div>
+</section>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+
+/* ================= 参数与状态 ================= */
+let P={N:4,rplBlk:true,aging:false,agingTh:8};
+let S=null;
+function newSim(){return{
+  bits:Array(P.N-1).fill(0),
+  filled:Array(P.N).fill(false),
+  aValid:Array(P.N).fill(false),
+  blocked:Array(P.N).fill(false),
+  cnts:Array(P.N).fill(0),
+  pending:null, rplEnd:null, cycle:0
+};}
+S=newSim();
+
+let playing=false,timer=null,speed=3;
+let scenario=null,queue=[];
+let accMode='hit', selId=0, rplSel=0;
+let anim=null;
+const LOG=[];
+
+/* ================= RTL 行为模型 ================= */
+function rangeValid(lo,hi){for(let i=lo;i<hi;i++)if(!S.blocked[i])return true;return false;}
+
+function evictId(){
+  let lo=0,hi=P.N,node=0;const path=[],edges=[];let forced=false;
+  while(hi-lo>1){
+    path.push(node);
+    const mid=(lo+hi)>>1;
+    let left=S.bits[node]===0;
+    if(P.rplBlk){
+      const lv=rangeValid(lo,mid), rv=rangeValid(mid,hi);
+      if(left&&!lv){left=false;forced=true;}
+      else if(!left&&!rv){left=true;forced=true;}
+    }
+    const child=left?node*2+1:node*2+2;
+    edges.push([node,child]);
+    if(left)hi=mid;else lo=mid;
+    node=child;
+  }
+  return {leaf:lo,path,edges,forced};
+}
+function comb(){
+  const ev=evictId();
+  const noMore=P.rplBlk&&S.blocked.every(b=>b);
+  const ready=S.pending?(S.pending.hit?true:!noMore):true;
+  const fire=!!S.pending&&ready;
+  return {ev,noMore,ready,fire};
+}
+function updateBits(leaf){
+  const bits=S.bits.slice();const flipped=[];
+  let lo=0,hi=P.N,node=0;
+  while(hi-lo>1){
+    const mid=(lo+hi)>>1;
+    const v=leaf<mid?1:0;
+    if(bits[node]!==v)flipped.push(node);
+    bits[node]=v;
+    if(leaf<mid){hi=mid;node=node*2+1;}else{lo=mid;node=node*2+2;}
+  }
+  return {bits,flipped};
+}
+const stateStr=()=>String(P.N-1)+"'b"+S.bits.slice().reverse().join('');
+const diedStr=bits=>String(P.N)+"'b"+bits.toString(2).padStart(P.N,'0').split('').join('');
+
+function tick(){
+  const c=comb();
+  const p=S.pending, rEnd=S.rplEnd;
+  const isMiss=c.fire&&!p.hit;
+  const accId=c.fire?(p.hit?p.id:c.ev.leaf):null;
+
+  let diedBits=0;
+  if(P.aging)for(let i=0;i<P.N;i++)if(S.cnts[i]>=P.agingTh&&S.aValid[i])diedBits|=1<<i;
+  const conflict=isMiss&&rEnd!==null&&rEnd===c.ev.leaf;
+
+  /* —— 时钟沿:寄存器更新 —— */
+  anim={flipped:[],evPath:[],victim:null,hitLeaf:null,fillLeaf:null};
+  if(c.fire){
+    const u=updateBits(p.hit?p.id:c.ev.leaf);
+    S.bits=u.bits;
+    anim.flipped=u.flipped;
+    if(p.hit){
+      anim.hitLeaf=p.id;
+      if(P.aging)S.cnts[p.id]=0;
+    }else{
+      anim.evPath=isMiss?c.ev.edges:[];
+      anim.victim=c.ev.leaf; anim.fillLeaf=c.ev.leaf;
+      S.filled[c.ev.leaf]=true;
+      if(P.aging){S.aValid[c.ev.leaf]=true;S.cnts[c.ev.leaf]=0;}
+      if(P.rplBlk)S.blocked[c.ev.leaf]=true;
+    }
+  }
+  if(P.rplBlk&&rEnd!==null)S.blocked[rEnd]=false;      /* setWhen 优先于 clearWhen */
+  if(P.aging){
+    for(let i=0;i<P.N;i++){
+      if(c.fire&&i===accId)S.cnts[i]=0;
+      else if(S.filled[i]&&S.cnts[i]<P.agingTh)S.cnts[i]++;
+    }
+    if(diedBits)for(let i=0;i<P.N;i++)if(diedBits>>i&1)S.aValid[i]=false;
+  }
+  if(c.fire)S.pending=null;
+  S.rplEnd=null;
+
+  /* —— 事件日志 —— */
+  const t=S.cycle;
+  if(c.fire){
+    if(p.hit){
+      let extra=S.blocked[p.id]?'(该路替换中,命中仍直通)':'';
+      log('hit',`命中路${p.id} → 沿路径翻转树位,state=${stateStr()} ${extra}`);
+    }else{
+      log('fill',`缺失访问 → PLRU 驱逐路${c.ev.leaf}${c.ev.forced?'(阻塞路被强制跳过)':''},填充路${c.ev.leaf}${P.rplBlk?' 🔒 阻塞中':''} · state=${stateStr()}`);
+    }
+  }
+  if(p&&!c.fire)log('bp',`⚠ update.ready=0:所有路都在替换中(no_more=1),缺失访问被背压,valid 保持为1`);
+  if(rEnd!==null){
+    const left=S.blocked.map((b,i)=>b?i:-1).filter(i=>i>=0);
+    log('rpl',`🔓 替换完成,释放路${rEnd}${left.length?'(仍阻塞:路'+left.join(',路')+')':'(全部释放)'}`);
+  }
+  if(conflict)log('conflict',`⚠ Replace the replacing cache line: ${rEnd} !!!(同周期 rpl_start=rpl_end,setWhen 优先 → 释放生效)`);
+  if(diedBits){
+    const who=[];for(let i=0;i<P.N;i++)if(diedBits>>i&1)who.push(i);
+    const hitSame=accId!==null&&((diedBits>>accId)&1);
+    log('die',`⚠ @t=${t} A cache line died: ${diedStr(diedBits)} (路${who.join(',路')} 老化超时)${hitSame?' — 恰好本周期被访问仍触发:断言是组合逻辑,先于计数器清零判定':''}`);
+  }
+  S.cycle++;
+  render();
+}
+
+/* ================= 日志 ================= */
+function log(kind,text){
+  LOG.push({kind,text,t:S.cycle});
+  if(LOG.length>200)LOG.shift();
+  const box=$('#logBox');
+  const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<24;
+  const div=document.createElement('div');
+  div.className='line k-'+kind;
+  const tag={info:'[INFO]',scn:'[SCN]',hit:'[HIT]',fill:'[FILL]',bp:'[BP]',rpl:'[RPL]',die:'[WARNING]',conflict:'[WARNING]'}[kind]||'';
+  div.innerHTML=`<span class="t">t=${S.cycle}</span><span class="tag">${tag}</span><span>${text}</span>`;
+  box.appendChild(div);
+  while(box.childElementCount>200)box.firstElementChild.remove();
+  if(atBottom)box.scrollTop=box.scrollHeight;
+}
+
+/* ================= 渲染 ================= */
+function treeLayout(){
+  const W=640,padY=42,rowH=72,L=Math.log2(P.N);
+  const H=padY+L*rowH+64;
+  const r=P.N===4?24:19, leafW=P.N===4?118:60, leafH=44;
+  return {W,H,L,r,leafW,leafH,padY,rowH};
+}
+function nodeXY(n){
+  const {W,padY,rowH}=treeLayout();
+  const lvl=Math.floor(Math.log2(n+1));
+  const idx=n-(Math.pow(2,lvl)-1),cnt=Math.pow(2,lvl);
+  return {x:(idx+0.5)*W/cnt,y:padY+lvl*rowH,lvl};
+}
+
+function renderTree(){
+  const {W,H,L,r,leafW,leafH,padY,rowH}=treeLayout();
+  const liveEv=evictId();
+  const victim=liveEv.leaf;
+  let s=`<svg id="treeSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">`;
+  /* 边 */
+  for(let node=0;node<P.N-1;node++){
+    const p0=nodeXY(node);
+    for(const child of[node*2+1,node*2+2]){
+      let cx,cy,isLeaf=child>=P.N-1;
+      if(isLeaf){const li=child-(P.N-1);cx=(li+0.5)*W/P.N;cy=padY+L*rowH-leafH/2;}
+      else{cx=nodeXY(child).x;cy=nodeXY(child).y-r;}
+      const hot=anim&&anim.evPath.some(e=>e[0]===node&&e[1]===child);
+      s+=`<line x1="${p0.x}" y1="${p0.y+r}" x2="${cx}" y2="${cy}" class="edge${hot?' hot':''}"/>`;
+    }
+  }
+  /* 树节点 */
+  for(let node=0;node<P.N-1;node++){
+    const {x,y}=nodeXY(node);
+    const b=S.bits[node];
+    const flip=anim&&anim.flipped.includes(node);
+    const onpath=anim&&anim.evPath.some(e=>e[0]===node);
+    s+=`<circle cx="${x}" cy="${y}" r="${r}" class="bit${b}${flip?' flip':''}${onpath?' onpath':''}"/>
+        <text x="${x}" y="${y+1}" class="bittxt t${b}">${b}</text>
+        <text x="${x}" y="${y+r+12}" class="nidx">s[${node}]</text>`;
+  }
+  /* 叶子 */
+  for(let i=0;i<P.N;i++){
+    const x=(i+0.5)*W/P.N,y=padY+L*rowH;
+    const blocked=P.rplBlk&&S.blocked[i];
+    const died=P.aging&&S.filled[i]&&!S.aValid[i];
+    const isVic=victim===i;
+    const fflash=anim&&anim.fillLeaf===i,hflash=anim&&anim.hitLeaf===i;
+    let st='';
+    if(blocked)st='🔒';
+    if(died)st='💀';
+    if(P.aging&&S.filled[i])st+=` ${S.cnts[i]}/${P.agingTh}`;
+    const cls=['leaf',blocked?'blocked':'',died?'died':'',isVic?'victim':'',fflash?'fillflash':'',hflash?'hitflash':''].join(' ').trim();
+    s+=`<rect x="${x-leafW/2}" y="${y-leafH/2}" width="${leafW}" height="${leafH}" class="${cls}"/>
+        <text x="${x}" y="${y-6}" class="leafid">路${i}</text>
+        <text x="${x}" y="${y+12}" class="leafst">${st.trim()}</text>`;
+  }
+  s+=`</svg>`;
+  $('#treeWrap').innerHTML=s;
+  $('#dState').textContent=stateStr();
+  $('#dEntry').textContent=victim;
+}
+
+function renderEntries(){
+  const liveEv=evictId();
+  let html='';
+  for(let i=0;i<P.N;i++){
+    const blocked=P.rplBlk&&S.blocked[i];
+    const died=P.aging&&S.filled[i]&&!S.aValid[i];
+    const victim=liveEv.leaf===i;
+    const cls=['entry',i===selId?'sel':'',victim?'victim':''].join(' ');
+    let badges='';
+    if(!S.filled[i])badges+=`<span class="badge empty">空(未填充)</span>`;
+    else badges+=`<span class="badge fill">● 已填充</span>`;
+    if(blocked)badges+=`<span class="badge blk">🔒 替换中</span>`;
+    if(died)badges+=`<span class="badge died">💀 老化死亡</span>`;
+    let age='';
+    if(P.aging&&S.filled[i]){
+      const pct=Math.min(100,Math.round(S.cnts[i]/P.agingTh*100));
+      age=`<div class="abar"><div style="width:${pct}%"></div></div>
+           <div class="eage"><span>老化计数</span><span class="mono">${S.cnts[i]}/${P.agingTh}</span></div>`;
+    }
+    html+=`<div class="${cls}" data-i="${i}">
+      <div class="ehead"><span class="eid">路 ${i}</span><span class="ebadges">${badges}</span></div>
+      ${age}
+      ${victim?'<div class="evtag">plru_entry 驱逐目标</div>':''}
+    </div>`;
+  }
+  $('#entries').innerHTML=html;
+  document.querySelectorAll('.entry').forEach(el=>{
+    el.addEventListener('click',()=>{selId=+el.dataset.i;render();});
+  });
+}
+
+function renderSignals(){
+  const c=comb();
+  $('#dCycle').textContent=S.cycle;
+  const v=(x)=>x===null?'—':String(x);
+  $('#sV').textContent=S.pending?'1':'0';
+  $('#sP').textContent=S.pending?`{id:${S.pending.id}, hit_or_miss:${S.pending.hit?'1':'0'}}`:'{id:x, hit_or_miss:x}';
+  const rEl=$('#sR');
+  rEl.textContent=S.pending?v(c.ready?1:0):'—';
+  rEl.classList.toggle('off',S.pending&&!c.ready);
+  $('#sF').textContent=c.fire?'1':'0';
+  $('#sRV').textContent=`${S.rplEnd!==null?'1':'0'} / ${v(S.rplEnd)}`;
+  $('#sEV').textContent=c.ev.leaf;
+  $('#sNM').textContent=P.rplBlk?v(c.noMore?1:0):'—';
+  $('#sST').textContent=stateStr();
+  $('#pendInd').hidden=!S.pending;
+  /* 注入按钮态 */
+  document.querySelectorAll('#accMode button').forEach(b=>b.classList.toggle('on',b.dataset.m===accMode));
+  document.querySelectorAll('#idBtns button').forEach(b=>{
+    b.classList.toggle('on',+b.dataset.i===selId);
+    b.disabled=accMode==='miss';
+  });
+  document.querySelectorAll('#rplBtns button').forEach(b=>b.classList.toggle('on',+b.dataset.i===rplSel));
+  $('#playBtn').textContent=playing?'⏸ 暂停':'▶ 自动';
+  $('#speedLbl').textContent='×'+speed;
+  $('#pTh').value=P.agingTh;
+  $('#pN').value=String(P.N);
+  $('#pBlk').checked=P.rplBlk;
+  $('#pAging').checked=P.aging;
+}
+
+function render(){renderTree();renderEntries();renderSignals();}
+
+/* ================= 控制 ================= */
+function startPlay(){playing=true;clearInterval(timer);timer=setInterval(step,Math.max(80,Math.round(1300/speed)));render();}
+function stopPlay(){playing=false;clearInterval(timer);timer=null;render();}
+function step(){
+  if(queue.length){
+    const st=queue.shift();
+    if(st.log)log('scn',st.log);
+    if(st.u)S.pending={id:st.u.id,hit:st.u.hit};
+    if(st.e!==undefined)S.rplEnd=st.e;
+    tick();
+    if(!queue.length){stopPlay();log('scn','—— 场景演示结束 ——');}
+  }else tick();
+}
+
+function resetAll(){
+  stopPlay();scenario=null;queue=[];
+  S=newSim();anim=null;
+  LOG.length=0;
+  const lb=$('#logBox');lb.innerHTML='';
+  log('info',`cache_line_num: ${P.N} with_rpl_blk: ${P.rplBlk}, with_aging_logic: ${P.aging}`);
+  log('info','仿真就绪 — 按 ⏱ Tick(或空格)单步,或选择"演示场景"自动播放');
+  render();
+}
+
+/* 参数控件 */
+$('#pN').addEventListener('change',e=>{P.N=+e.target.value;resetAll();});
+$('#pBlk').addEventListener('change',e=>{P.rplBlk=e.target.checked;resetAll();});
+$('#pAging').addEventListener('change',e=>{P.aging=e.target.checked;resetAll();});
+$('#pTh').addEventListener('change',e=>{P.agingTh=Math.max(2,Math.min(64,+e.target.value||8));resetAll();});
+
+/* 访问注入 */
+document.querySelectorAll('#accMode button').forEach(b=>b.addEventListener('click',()=>{accMode=b.dataset.m;render();}));
+function buildIdBtns(){
+  let h='';
+  for(let i=0;i<P.N;i++)h+=`<button data-i="${i}">${i}</button>`;
+  $('#idBtns').innerHTML=h;
+  $('#rplBtns').innerHTML=h;
+  document.querySelectorAll('#idBtns button').forEach(b=>b.addEventListener('click',()=>{selId=+b.dataset.i;render();}));
+  document.querySelectorAll('#rplBtns button').forEach(b=>b.addEventListener('click',()=>{rplSel=+b.dataset.i;render();}));
+}
+$('#injectBtn').addEventListener('click',()=>{
+  if(scenario&&queue.length)log('info','场景播放中:手动注入将被下一步覆盖');
+  S.pending={id:selId,hit:accMode==='hit'};render();
+});
+$('#cancelAcc').addEventListener('click',()=>{S.pending=null;render();});
+$('#rplBtn').addEventListener('click',()=>{S.rplEnd=rplSel;render();});
+
+/* 时钟 */
+$('#tickBtn').addEventListener('click',()=>tick());
+$('#playBtn').addEventListener('click',()=>playing?stopPlay():startPlay());
+$('#speed').addEventListener('input',e=>{speed=+e.target.value;if(playing)startPlay();render();});
+$('#resetBtn').addEventListener('click',()=>resetAll());
+$('#clearLog').addEventListener('click',()=>{LOG.length=0;$('#logBox').innerHTML='';});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&e.target===document.body){e.preventDefault();tick();}
+});
+
+/* 主题 */
+const themeOrder=['auto','dark','light'];
+let themeIdx=0;
+function applyTheme(){
+  const t=themeOrder[themeIdx];
+  if(t==='auto')document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme',t);
+  $('#themeBtn').textContent='主题:'+t;
+}
+$('#themeBtn').addEventListener('click',()=>{themeIdx=(themeIdx+1)%3;applyTheme();});
+applyTheme();
+
+/* 场景 */
+function runScenario(cfg,steps,intro){
+  P.N=cfg.N;P.rplBlk=cfg.rplBlk;P.aging=cfg.aging;P.agingTh=cfg.agingTh;
+  resetAll();
+  scenario=cfg.name;queue=steps.slice();
+  log('scn',intro);
+  startPlay();
+}
+$('#scn1').addEventListener('click',()=>runScenario(
+  {N:4,rplBlk:false,aging:false,agingTh:8},
+  [
+    {log:'—— 顺序缺失×4:PLRU 驱逐顺序 0→2→1→3(输入 id 被忽略,填充目标=plru_entry)——',u:{hit:false,id:0}},
+    {u:{hit:false,id:0}},
+    {u:{hit:false,id:0}},
+    {u:{hit:false,id:0}},
+    {log:'—— 命中路0:沿路径翻转树位,路0变为"最近使用"——',u:{hit:true,id:0}},
+    {log:'—— 命中路2:再次翻转,plru_entry 随之改变——',u:{hit:true,id:2}},
+  ],
+  '场景①:4 路无阻塞无老化,观察树位翻转与轮转式驱逐顺序 0→2→1→3'));
+$('#scn2').addEventListener('click',()=>runScenario(
+  {N:4,rplBlk:true,aging:false,agingTh:8},
+  [
+    {log:'—— 缺失①:填充路0并阻塞,替换进入流程——',u:{hit:false,id:0}},
+    {log:'—— 缺失②:填充路2并阻塞——',u:{hit:false,id:0}},
+    {log:'—— 缺失③:路0/路2阻塞中,寻路选择路1——',u:{hit:false,id:0}},
+    {log:'—— 缺失④:填充路3 → 四路全部阻塞!——',u:{hit:false,id:0}},
+    {log:'—— 缺失⑤:no_more=1,ready=0,请求被背压(valid 保持)——',u:{hit:false,id:0}},
+    {log:'—— rpl_end 到达:valids 是寄存器,本周期 ready 仍为 0(请求继续被背压)——',e:1},
+    {log:'—— 下一周期 ready=1:树位指向阻塞的路0 → 强制跳到唯一可用路1——',u:{hit:false,id:0}},
+  ],
+  '场景②:替换阻塞 — 填满阻塞 → 背压 → rpl_end 释放 → 强制驱逐'));
+$('#scn3').addEventListener('click',()=>runScenario(
+  {N:4,rplBlk:true,aging:true,agingTh:6},
+  [
+    {log:'—— 缺失填充路0后替换迟迟未完成(阻塞),老化计数每周期+1,阈值=6——',u:{hit:false,id:0}},
+    {},{},{},{},{},{},
+    {log:'—— 计数已达 6/6,下个周期将触发死亡断言——'},
+    {log:'—— 命中路0:计数复位,但老化有效位已被清除,之后不再告警(RTL 行为)——',u:{hit:true,id:0}},
+    {},{},{},{},{},{},
+  ],
+  '场景③:替换卡死 → 老化超时 WARNING(仅告警不动作);命中复位计数但不复活有效位'));
+
+/* 启动 */
+buildIdBtns();
+resetAll();
+</script>
+</body>
+</html>
