@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CuckooHashTable v1 · 交互演示</title>
+<style>
+/* ===== 设计变量（亮/暗双主题） ===== */
+:root{
+  --page:#f9f9f7; --surface:#fcfcfb; --surface2:#f0efe9;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s8:#e34948;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --warn-ink:#8a5b00; --crit-ink:#d03b3b;
+  --onFill:#ffffff;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    --page:#0d0d0d; --surface:#1a1a19; --surface2:#262624;
+    --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s8:#e66767;
+    --warn-ink:#fab219; --crit-ink:#e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0d0d0d; --surface:#1a1a19; --surface2:#262624;
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s8:#e66767;
+  --warn-ink:#fab219; --crit-ink:#e66767;
+  color-scheme: dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--page); color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.5;
+  padding:18px 20px 40px;
+}
+h1{font-size:20px;margin:0}
+h2{font-size:13px;margin:0 0 10px;letter-spacing:.02em}
+.sub{color:var(--ink2);margin:4px 0 0;font-size:13px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.mono{font-variant-numeric:tabular-nums}
+a{color:var(--s1)}
+header.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:12px}
+header.top .tag{color:var(--ink2);font-weight:400;font-size:13px;margin-left:10px}
+
+button{
+  font:inherit;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--axis);border-radius:6px;
+  padding:5px 12px;cursor:pointer;
+}
+button:hover{border-color:var(--ink2)}
+button.primary{background:var(--s1);color:#fff;border-color:var(--s1)}
+button.primary:hover{filter:brightness(1.08)}
+button:disabled{opacity:.38;cursor:not-allowed}
+input[type=text],input[type=range]{
+  font:inherit;color:var(--ink);background:var(--surface2);
+  border:1px solid var(--axis);border-radius:6px;padding:4px 8px;
+}
+input[type=text]{min-width:210px;font-family:ui-monospace,Menlo,Consolas,monospace}
+input[type=range]{padding:0;border:none;background:none;width:110px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:0}
+.cardHead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.hint{color:var(--muted);font-weight:400;font-size:12px}
+.note{color:var(--muted);font-size:12px;margin:8px 0 0}
+.params{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.params label{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:12px}
+.sep{width:1px;height:20px;background:var(--grid)}
+
+.grid{display:grid;grid-template-columns:minmax(620px,2.35fr) minmax(300px,1fr);gap:14px;align-items:start}
+.side{display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (max-width:1120px){ .grid{grid-template-columns:1fr} }
+
+/* ===== 桶表 ===== */
+.tableWrap{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.bucket{display:grid;grid-template-columns:82px 1fr;gap:8px;align-items:center;border-radius:7px;padding:2px 4px}
+.bucket.cand0{background:rgba(42,120,214,.08)}
+.bucket.cand1{background:rgba(235,104,52,.08)}
+.bucket.cur{outline:1px dashed var(--crit);outline-offset:1px}
+.bucket.read{outline:1px dashed var(--s4);outline-offset:1px}
+.bucketLabel{display:flex;align-items:center;gap:4px;font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;color:var(--ink2)}
+.bucket.cand0 .bucketLabel{color:var(--s1)}
+.bucket.cand1 .bucketLabel{color:var(--s2)}
+.badge{font-size:9px;padding:0 4px;border-radius:4px;color:#fff;font-weight:600;line-height:15px}
+.badge.h0{background:var(--s1)}
+.badge.h1{background:var(--s2)}
+.ways{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.cell{
+  position:relative;min-height:42px;border:1px solid var(--grid);border-radius:6px;
+  background:var(--surface2);padding:5px 6px;font-size:11px;overflow:hidden;
+  transition:border-color .15s, box-shadow .15s, background .15s;
+}
+.cell.empty{border-style:dashed;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.cell.valid.src0{border-left:3px solid var(--s1)}
+.cell.valid.src1{border-left:3px solid var(--s2)}
+.cell .srcTag{position:absolute;top:2px;right:4px;font-size:9px;color:var(--muted)}
+.cell .skey{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.cell.victim{border-color:var(--crit);box-shadow:0 0 0 2px var(--crit) inset;background:rgba(208,59,59,.12)}
+.cell.new{border-color:var(--good);box-shadow:0 0 0 2px var(--good) inset;background:rgba(12,163,12,.12)}
+.cell.hit{border-color:var(--good);box-shadow:0 0 0 2px var(--good) inset;background:rgba(12,163,12,.18)}
+.cell.read{box-shadow:0 0 0 2px var(--s4) inset}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;color:var(--muted);font-size:11px}
+.legend span{display:flex;align-items:center;gap:5px}
+.lg{width:10px;height:10px;border-radius:3px;display:inline-block;border:1px solid var(--axis)}
+.lg.cand0{background:rgba(42,120,214,.35);border-color:var(--s1)}
+.lg.cand1{background:rgba(235,104,52,.35);border-color:var(--s2)}
+.lg.victim{background:rgba(208,59,59,.35);border-color:var(--crit)}
+.lg.new{background:rgba(12,163,12,.35);border-color:var(--good)}
+.lg.hit{background:rgba(12,163,12,.55);border-color:var(--good)}
+.lg.read{background:rgba(237,161,0,.35);border-color:var(--s4)}
+
+/* ===== 面板 ===== */
+.kv{display:grid;grid-template-columns:88px 1fr;gap:6px;padding:3px 0;font-size:12px;align-items:center}
+.kv span{color:var(--muted)}
+.kv b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--axis);background:var(--surface2);width:max-content}
+.chip.idle{color:var(--ink2)}
+.chip.fast{color:var(--s1);border-color:var(--s1)}
+.chip.read{color:var(--s4);border-color:var(--s4)}
+.chip.eval{color:var(--s2);border-color:var(--s2)}
+.chip.finish{color:var(--s3);border-color:var(--s3)}
+#statusVal.ok{color:var(--good)}
+#statusVal.exist{color:var(--warn-ink)}
+#statusVal.bad{color:var(--crit)}
+
+.stashWrap{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.stashSlot{border:1px dashed var(--axis);border-radius:6px;padding:6px;min-height:50px;font-size:11px;background:var(--surface2)}
+.stashSlot.valid{border-style:solid}
+.stashSlot.new{border-color:var(--good);box-shadow:0 0 0 2px var(--good) inset;background:rgba(12,163,12,.1)}
+.stashSlot.hit{border-color:var(--good);background:rgba(12,163,12,.16)}
+.slotHead{color:var(--muted);font-size:10px;margin-bottom:4px}
+.slotKey{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.loadBar{height:7px;background:var(--surface2);border-radius:99px;overflow:hidden;margin:2px 0 10px;border:1px solid var(--border)}
+.loadBar i{display:block;height:100%;width:0;background:var(--s3);transition:width .2s}
+.loadBar i.warn{background:var(--s4)}
+.loadBar i.crit{background:var(--crit)}
+.statGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.statGrid > div{background:var(--surface2);border-radius:6px;padding:6px 8px;display:flex;justify-content:space-between;gap:8px;font-size:12px}
+.statGrid span{color:var(--muted)}
+
+/* ===== 日志 ===== */
+.logCard{margin-top:14px}
+.log{max-height:280px;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.5}
+.logline{display:flex;gap:8px;padding:2px 0;border-bottom:1px solid var(--border)}
+.logline:last-child{border-bottom:none}
+.lt{color:var(--muted);min-width:34px;flex:none}
+.lm{white-space:pre-wrap;word-break:break-word}
+.logline.good .lm{color:var(--good)}
+.logline.warn .lm{color:var(--warn-ink)}
+.logline.bad .lm{color:var(--crit)}
+.logline.step .lm{color:var(--s1)}
+
+.foot{margin-top:14px;color:var(--ink2);font-size:12.5px}
+.foot h2{margin-bottom:6px}
+.foot p{margin:6px 0}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>CuckooHashTable v1 <span class="tag">SpinalHDL · src/main/scala/hash/CuckooHashTable.scala</span></h1>
+    <p class="sub">2-way 布谷鸟哈希 · 桶深 4 · 逐出 FSM + 4 项 stash · <a href="CuckooHashV1.md">v1 实现文档</a> · <a href="CuckooHash.md">设计思路</a></p>
+  </div>
+  <button id="themeBtn" title="切换亮/暗主题">主题</button>
+</header>
+
+<section class="card params">
+  <label>key <input id="keyInput" type="text" spellcheck="false" value="0x251102E6425AE758"></label>
+  <button id="randKeyBtn">随机 key</button>
+  <span class="sep"></span>
+  <button class="primary" id="appendBtn" data-lock>APPEND</button>
+  <button id="queryBtn" data-lock>QUERY</button>
+  <button id="deleteBtn" data-lock>DELETE</button>
+  <button id="randOpBtn" data-lock>随机操作</button>
+  <span class="sep"></span>
+  <label>速度 <input id="speed" type="range" min="0" max="450" value="180"><span id="speedVal" class="mono">180ms</span></label>
+  <span class="sep"></span>
+  <button id="fill50" data-lock>填充 50%</button>
+  <button id="fill75" data-lock>填充 75%</button>
+  <button id="fill90" data-lock>填充 90%</button>
+  <button id="resetBtn" data-lock>重置</button>
+</section>
+
+<div class="grid">
+  <section class="card">
+    <div class="cardHead">
+      <h2>桶表 <span class="hint">16 桶 × 4 way · 地址 = CRC-8 低 4 位</span></h2>
+      <span class="hint mono">capacity = 64</span>
+    </div>
+    <div id="tableWrap" class="tableWrap"></div>
+    <div class="legend">
+      <span><i class="lg cand0"></i>h0 候选桶</span>
+      <span><i class="lg cand1"></i>h1 候选桶</span>
+      <span><i class="lg victim"></i>victim</span>
+      <span><i class="lg new"></i>写 / 新位置</span>
+      <span><i class="lg hit"></i>命中</span>
+      <span><i class="lg read"></i>当前读桶</span>
+    </div>
+  </section>
+
+  <div class="side">
+    <section class="card">
+      <h2>本次操作</h2>
+      <div class="kv"><span>state</span><b id="stateChip" class="chip idle">IDLE</b></div>
+      <div class="kv"><span>op</span><b id="opVal">—</b></div>
+      <div class="kv"><span>h0 / h1</span><b id="hVal" class="mono">—</b></div>
+      <div class="kv"><span>pending</span><b id="pendingVal" class="mono">—</b></div>
+      <div class="kv"><span>alt</span><b id="altVal" class="mono">—</b></div>
+      <div class="kv"><span>kickCnt</span><b id="kickVal" class="mono">0 / 8</b></div>
+      <div class="kv"><span>status</span><b id="statusVal" class="mono">—</b></div>
+      <p class="note">快路径 S0→S1；两桶全满进入 EVAL / READ 慢路径。</p>
+    </section>
+
+    <section class="card">
+      <div class="cardHead"><h2>stash</h2><span id="stashCount" class="hint mono">0 / 4</span></div>
+      <div id="stashWrap" class="stashWrap"></div>
+      <p class="note">慢路径失败时 pending 落在这里；查询/删除也会命中 stash。</p>
+    </section>
+
+    <section class="card">
+      <h2>统计</h2>
+      <div class="loadBar"><i id="loadFill"></i></div>
+      <div class="statGrid">
+        <div><span>keys</span><b id="statKeys" class="mono">0</b></div>
+        <div><span>load</span><b id="statLoad" class="mono">0%</b></div>
+        <div><span>stash</span><b id="statStash" class="mono">0/4</b></div>
+        <div><span>ops</span><b id="statOps" class="mono">0</b></div>
+        <div><span>evictions</span><b id="statEvict" class="mono">0</b></div>
+        <div><span>kicks</span><b id="statKicks" class="mono">0</b></div>
+        <div><span>stashUses</span><b id="statStashUses" class="mono">0</b></div>
+        <div><span>last chain</span><b id="statChain" class="mono">0</b></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<section class="card logCard">
+  <div class="cardHead"><h2>操作日志</h2><button id="clearLogBtn">清空</button></div>
+  <div id="log" class="log"></div>
+</section>
+
+<section class="card foot">
+  <h2>说明</h2>
+  <p>本页是 v1 的行为模型：CRC-8（poly <code>0x9B</code> / <code>0x1D</code>，init <code>0xFF</code>）给出两个候选桶；APPEND 优先写 h0，再写 h1；两个桶都满时进入逐出慢路径，随机踢出 victim，按 <code>src</code> 标签改投；<code>alt == cur</code> 或 <code>kickCnt == 8</code> 时把 pending 写入 stash。进入慢路径前会预检 stash，满则返回 UNAVAILABLE 且不写表。</p>
+  <p>为便于观察，桶表缩小为 <b>16 桶</b>（取 CRC-8 低 4 位），RTL 默认是 256 桶；桶深 4、stash 4、maxKicks 8、src 标签和失败原子性与 RTL 一致。绿色=写/命中，红色=victim，黄色=当前读桶。</p>
+</section>
+
+<script>
+'use strict';
+
+const NB = 16, WAYS = 4, STASH_N = 4, MAX_KICKS = 8;
+const POLY0 = 0x9B, POLY1 = 0x1D, CRC_INIT = 0xFF;
+
+let table, stash, stats, hl, logSeq = 0, busy = false;
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const speedMs = () => Number($('speed').value);
+
+function hex(n) { return n.toString(16).toUpperCase(); }
+function fmtKey(k) { return '0x' + k.toString(16).toUpperCase().padStart(16, '0'); }
+function shortKey(k) { return k.toString(16).toUpperCase().padStart(16, '0').slice(-8); }
+
+function parseKey(text) {
+  const s = text.trim().replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]{1,16}$/.test(s)) return null;
+  return BigInt('0x' + s);
+}
+
+function rand64() {
+  const hi = BigInt(Math.floor(Math.random() * 0x100000000));
+  const lo = BigInt(Math.floor(Math.random() * 0x100000000));
+  return ((hi << 32n) | lo) & 0xFFFFFFFFFFFFFFFFn;
+}
+
+/* 与 RTL CrcCore 一致：poly 8 bit，init 0xFF，64 bit key MSB-first */
+function crc8(key, poly) {
+  let crc = CRC_INIT;
+  for (let i = 63n; i >= 0n; i -= 1n) {
+    const bit = Number((key >> i) & 1n);
+    const din = bit ^ ((crc >> 7) & 1);
+    let n = din;
+    for (let j = 1; j < 8; j++) {
+      n |= (((din & ((poly >> j) & 1)) ^ ((crc >> (j - 1)) & 1)) << j);
+    }
+    crc = n & 0xFF;
+  }
+  return crc;
+}
+function h0Of(key) { return crc8(key, POLY0) & (NB - 1); }
+function h1Of(key) { return crc8(key, POLY1) & (NB - 1); }
+
+function newEntry() { return { valid: false, src: 0, key: 0n }; }
+
+function resetModel() {
+  table = Array.from({ length: NB }, () => Array.from({ length: WAYS }, () => newEntry()));
+  stash = Array.from({ length: STASH_N }, () => ({ valid: false, key: 0n }));
+  stats = { ops: 0, appends: 0, queries: 0, deletes: 0, evictions: 0, kicks: 0, stashUses: 0, fails: 0, lastStatus: '—', lastChain: 0 };
+  hl = { buckets: new Map(), cells: new Map(), stash: new Map() };
+  logSeq = 0;
+}
+
+function freeWay(b) { for (let w = 0; w < WAYS; w++) if (!table[b][w].valid) return w; return -1; }
+function stashFree() { for (let i = 0; i < STASH_N; i++) if (!stash[i].valid) return i; return -1; }
+function findKey(key) {
+  for (let b = 0; b < NB; b++) for (let w = 0; w < WAYS; w++) {
+    const e = table[b][w];
+    if (e.valid && e.key === key) return { type: 'bucket', b, w };
+  }
+  for (let i = 0; i < STASH_N; i++) {
+    const e = stash[i];
+    if (e.valid && e.key === key) return { type: 'stash', i };
+  }
+  return null;
+}
+function keyCount() {
+  let n = 0;
+  for (let b = 0; b < NB; b++) for (let w = 0; w < WAYS; w++) if (table[b][w].valid) n++;
+  return n;
+}
+function stashCount() {
+  let n = 0;
+  for (let i = 0; i < STASH_N; i++) if (stash[i].valid) n++;
+  return n;
+}
+function load() { return keyCount() / (NB * WAYS); }
+function loc(f) { return f.type === 'bucket' ? `B${hex(f.b)} W${f.w}` : `stash[S${f.i}]`; }
+
+function clearHL() { hl = { buckets: new Map(), cells: new Map(), stash: new Map() }; }
+function markBucket(b, cls) { const old = hl.buckets.get(b); hl.buckets.set(b, old ? old + ' ' + cls : cls); }
+function markCell(b, w, cls) { hl.cells.set(`${b}-${w}`, cls); }
+function markStash(i, cls) { hl.stash.set(i, cls); }
+function markHit(f) { if (f.type === 'bucket') markCell(f.b, f.w, 'hit'); else markStash(f.i, 'hit'); }
+
+/* 清掉临时高亮，保留 h0/h1 候选桶 */
+function resetTransient() {
+  const keep = new Map();
+  for (const [b, c] of hl.buckets) {
+    const parts = c.split(' ').filter(x => x === 'cand0' || x === 'cand1');
+    if (parts.length) keep.set(b, parts.join(' '));
+  }
+  hl.buckets = keep;
+  hl.cells = new Map();
+  hl.stash = new Map();
+}
+
+function renderTable() {
+  const wrap = $('tableWrap');
+  wrap.innerHTML = '';
+  for (let b = 0; b < NB; b++) {
+    const row = document.createElement('div');
+    row.className = 'bucket';
+    const bc = hl.buckets.get(b);
+    if (bc) bc.split(' ').forEach(c => row.classList.add(c));
+
+    const lab = document.createElement('div');
+    lab.className = 'bucketLabel';
+    const name = document.createElement('span');
+    name.textContent = `B${hex(b)}`;
+    lab.appendChild(name);
+    if (bc && bc.split(' ').includes('cand0')) lab.insertAdjacentHTML('beforeend', '<span class="badge h0">h0</span>');
+    if (bc && bc.split(' ').includes('cand1')) lab.insertAdjacentHTML('beforeend', '<span class="badge h1">h1</span>');
+    row.appendChild(lab);
+
+    const ways = document.createElement('div');
+    ways.className = 'ways';
+    for (let w = 0; w < WAYS; w++) {
+      const e = table[b][w];
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (e.valid ? ` valid ${e.src ? 'src1' : 'src0'}` : ' empty');
+      const cc = hl.cells.get(`${b}-${w}`);
+      if (cc) cc.split(' ').forEach(c => cell.classList.add(c));
+      if (e.valid) {
+        cell.title = `${fmtKey(e.key)}  src=${e.src ? 'h1' : 'h0'}`;
+        const tag = document.createElement('span');
+        tag.className = 'srcTag';
+        tag.textContent = e.src ? 'h1' : 'h0';
+        const key = document.createElement('span');
+        key.className = 'skey';
+        key.textContent = shortKey(e.key);
+        cell.appendChild(tag);
+        cell.appendChild(key);
+      } else {
+        cell.textContent = 'empty';
+      }
+      ways.appendChild(cell);
+    }
+    row.appendChild(ways);
+    wrap.appendChild(row);
+  }
+}
+
+function renderStash() {
+  const wrap = $('stashWrap');
+  wrap.innerHTML = '';
+  for (let i = 0; i < STASH_N; i++) {
+    const e = stash[i];
+    const d = document.createElement('div');
+    d.className = 'stashSlot' + (e.valid ? ' valid' : ' empty');
+    const c = hl.stash.get(i);
+    if (c) c.split(' ').forEach(x => d.classList.add(x));
+    if (e.valid) d.title = fmtKey(e.key);
+    const head = document.createElement('div');
+    head.className = 'slotHead';
+    head.textContent = `S${i}`;
+    const val = document.createElement('div');
+    val.className = 'slotKey mono';
+    val.textContent = e.valid ? shortKey(e.key) : '—';
+    d.appendChild(head);
+    d.appendChild(val);
+    wrap.appendChild(d);
+  }
+}
+
+function setState(label, cls) {
+  const el = $('stateChip');
+  el.textContent = label;
+  el.className = 'chip ' + cls;
+}
+function setOp(op) { $('opVal').textContent = op; }
+function setH(h0, h1) {
+  const el = $('hVal');
+  if (typeof h0 !== 'number' || typeof h1 !== 'number') { el.textContent = '—'; return; }
+  el.textContent = (h0 === h1) ? `B${hex(h0)} (h0=h1)` : `B${hex(h0)} / B${hex(h1)}`;
+}
+function setPending(k) { $('pendingVal').textContent = (typeof k === 'bigint') ? fmtKey(k) : '—'; }
+function setAlt(b) { $('altVal').textContent = (typeof b === 'number') ? `B${hex(b)}` : '—'; }
+function setKick(k) { $('kickVal').textContent = `${k} / ${MAX_KICKS}`; }
+function setStatus(s, cls) {
+  const el = $('statusVal');
+  el.textContent = s;
+  el.className = 'mono' + (cls ? ' ' + cls : '');
+}
+function clearPanel() {
+  setOp('—');
+  setH('—', '—');
+  setPending('—');
+  setAlt('—');
+  setKick(0);
+  setStatus('—', '');
+  setState('IDLE', 'idle');
+}
+
+function updateStats() {
+  const k = keyCount();
+  const st = stashCount();
+  const l = k / (NB * WAYS);
+  $('statKeys').textContent = k;
+  $('statLoad').textContent = (l * 100).toFixed(1) + '%';
+  $('statStash').textContent = `${st}/${STASH_N}`;
+  $('statOps').textContent = stats.ops;
+  $('statEvict').textContent = stats.evictions;
+  $('statKicks').textContent = stats.kicks;
+  $('statStashUses').textContent = stats.stashUses;
+  $('statChain').textContent = stats.lastChain;
+  $('stashCount').textContent = `${st} / ${STASH_N}`;
+  const fill = $('loadFill');
+  fill.style.width = (l * 100).toFixed(1) + '%';
+  fill.className = l >= 0.95 ? 'crit' : (l >= 0.85 ? 'warn' : '');
+}
+
+function renderAll() {
+  renderTable();
+  renderStash();
+  updateStats();
+}
+
+function log(msg, cls) {
+  const box = $('log');
+  const line = document.createElement('div');
+  line.className = 'logline' + (cls ? ' ' + cls : '');
+  const lt = document.createElement('span');
+  lt.className = 'lt';
+  lt.textContent = '#' + (++logSeq);
+  const lm = document.createElement('span');
+  lm.className = 'lm';
+  lm.textContent = msg;
+  line.appendChild(lt);
+  line.appendChild(lm);
+  box.appendChild(line);
+  while (box.children.length > 300) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setBusy(b) {
+  busy = b;
+  document.querySelectorAll('[data-lock]').forEach(el => { el.disabled = b; });
+}
+
+async function doQuery(key) {
+  stats.ops++;
+  stats.queries++;
+  stats.lastChain = 0;
+  setOp('QUERY');
+  setStatus('—', '');
+  setState('S0 哈希', 'fast');
+  const h0 = h0Of(key), h1 = h1Of(key);
+  setH(h0, h1);
+  clearHL();
+  markBucket(h0, 'cand0');
+  if (h1 !== h0) markBucket(h1, 'cand1');
+  log(`QUERY ${fmtKey(key)} → h0=B${hex(h0)}, h1=B${hex(h1)}`, 'step');
+  renderAll();
+  await sleep(speedMs());
+
+  setState('S1 探测', 'fast');
+  const found = findKey(key);
+  if (found) {
+    markHit(found);
+    setStatus('SUCCESS', 'ok');
+    stats.lastStatus = 'SUCCESS';
+    log(`SUCCESS：命中 ${loc(found)}`, 'good');
+  } else {
+    setStatus('NON_EXIST', 'bad');
+    stats.lastStatus = 'NON_EXIST';
+    log('NON_EXIST：两个桶和 stash 都未命中', 'bad');
+  }
+  setState('IDLE', 'idle');
+  renderAll();
+  await sleep(speedMs());
+}
+
+async function doDelete(key) {
+  stats.ops++;
+  stats.deletes++;
+  stats.lastChain = 0;
+  setOp('DELETE');
+  setStatus('—', '');
+  setState('S0 哈希', 'fast');
+  const h0 = h0Of(key), h1 = h1Of(key);
+  setH(h0, h1);
+  clearHL();
+  markBucket(h0, 'cand0');
+  if (h1 !== h0) markBucket(h1, 'cand1');
+  log(`DELETE ${fmtKey(key)} → h0=B${hex(h0)}, h1=B${hex(h1)}`, 'step');
+  renderAll();
+  await sleep(speedMs());
+
+  setState('S1 探测', 'fast');
+  const found = findKey(key);
+  if (!found) {
+    setStatus('NON_EXIST', 'bad');
+    stats.lastStatus = 'NON_EXIST';
+    log('NON_EXIST：没有可删除的项', 'bad');
+    setState('IDLE', 'idle');
+    renderAll();
+    await sleep(speedMs());
+    return;
+  }
+
+  resetTransient();
+  markBucket(h0, 'cand0');
+  if (h1 !== h0) markBucket(h1, 'cand1');
+  markHit(found);
+  log(`命中 ${loc(found)}，清 valid`, 'step');
+  renderAll();
+  await sleep(speedMs());
+
+  if (found.type === 'bucket') {
+    table[found.b][found.w].valid = false;
+    log(`已清除 B${hex(found.b)} W${found.w}`, 'good');
+  } else {
+    stash[found.i].valid = false;
+    log(`已清除 stash[S${found.i}]`, 'good');
+  }
+  setStatus('SUCCESS', 'ok');
+  stats.lastStatus = 'SUCCESS';
+  setState('IDLE', 'idle');
+  renderAll();
+  await sleep(speedMs());
+}
+
+async function doAppend(key, opt = {}) {
+  const animate = opt.animate !== false;
+  const silent = !!opt.silent;
+  const ui = !silent;
+  const paint = async () => { if (ui) { renderAll(); await sleep(speedMs()); } };
+
+  stats.ops++;
+  stats.appends++;
+  stats.lastChain = 0;
+
+  if (ui) { setOp('APPEND'); setStatus('—', ''); setState('S0 哈希', 'fast'); }
+  const h0 = h0Of(key), h1 = h1Of(key);
+  if (ui) {
+    setH(h0, h1);
+    clearHL();
+    markBucket(h0, 'cand0');
+    if (h1 !== h0) markBucket(h1, 'cand1');
+    log(`APPEND ${fmtKey(key)} → h0=B${hex(h0)}, h1=B${hex(h1)}`, 'step');
+  }
+  await paint();
+
+  if (ui) setState('S1 探测', 'fast');
+  const found = findKey(key);
+  if (found) {
+    stats.lastStatus = 'EXIST';
+    if (ui) {
+      markHit(found);
+      log(`EXIST：key 已在 ${loc(found)}`, 'warn');
+      setStatus('EXIST', 'exist');
+      setState('IDLE', 'idle');
+    }
+    await paint();
+    return 'EXIST';
+  }
+
+  let b = h0, w = freeWay(h0), src = 0;
+  if (w < 0 && h1 !== h0) { b = h1; w = freeWay(h1); src = 1; }
+  if (w >= 0) {
+    table[b][w] = { valid: true, src, key };
+    stats.lastStatus = 'SUCCESS';
+    if (ui) {
+      resetTransient();
+      markBucket(h0, 'cand0');
+      if (h1 !== h0) markBucket(h1, 'cand1');
+      markCell(b, w, 'new');
+      log(`快路径：写入 B${hex(b)} W${w}（src=${src ? 'h1' : 'h0'}）`, 'good');
+      setStatus('SUCCESS', 'ok');
+      setState('IDLE', 'idle');
+    }
+    await paint();
+    return 'SUCCESS';
+  }
+
+  if (ui) log('两个候选桶全满，检查 stash', 'warn');
+  if (stashFree() < 0) {
+    stats.lastStatus = 'UNAVAILABLE';
+    stats.fails++;
+    if (ui) {
+      setStatus('UNAVAILABLE', 'bad');
+      setState('IDLE', 'idle');
+      log('stash 已满 → UNAVAILABLE（零写）', 'bad');
+    }
+    await paint();
+    return 'UNAVAILABLE';
+  }
+
+  stats.evictions++;
+  const b0 = (h0 === h1) ? h0 : (Math.random() < 0.5 ? h0 : h1);
+  const w0 = Math.floor(Math.random() * WAYS);
+  const victim = { ...table[b0][w0] };
+
+  let pending = victim, pendingSrc = victim.src, cur = b0, kick = 1;
+
+  const finishStash = async (reason) => {
+    const si = stashFree();
+    stash[si] = { valid: true, key: pending.key };
+    stats.stashUses++;
+    stats.lastStatus = 'SUCCESS';
+    stats.lastChain = kick;
+    if (ui) {
+      resetTransient();
+      markBucket(h0, 'cand0');
+      if (h1 !== h0) markBucket(h1, 'cand1');
+      markStash(si, 'new');
+      log(`${reason}，pending 写入 stash[S${si}]`, 'warn');
+      setState('FINISH', 'finish');
+      setStatus('SUCCESS', 'ok');
+    }
+    await paint();
+    if (ui) setState('IDLE', 'idle');
+    await paint();
+    return 'SUCCESS';
+  };
+
+  const finishPlace = async (bucket, way, reason) => {
+    table[bucket][way] = { valid: true, src: pendingSrc === 0 ? 1 : 0, key: pending.key };
+    stats.lastStatus = 'SUCCESS';
+    stats.lastChain = kick;
+    if (ui) {
+      resetTransient();
+      markBucket(h0, 'cand0');
+      if (h1 !== h0) markBucket(h1, 'cand1');
+      markCell(bucket, way, 'new');
+      log(`${reason}，写入 pending`, 'good');
+      setState('FINISH', 'finish');
+      setStatus('SUCCESS', 'ok');
+    }
+    await paint();
+    if (ui) setState('IDLE', 'idle');
+    await paint();
+    return 'SUCCESS';
+  };
+
+  if (ui) {
+    resetTransient();
+    markBucket(h0, 'cand0');
+    if (h1 !== h0) markBucket(h1, 'cand1');
+    markBucket(b0, 'cur');
+    markCell(b0, w0, 'victim');
+    log(`慢路径：选 B${hex(b0)} W${w0}，victim=${shortKey(victim.key)}（src=${victim.src ? 'h1' : 'h0'}）`, 'warn');
+  }
+  await paint();
+
+  table[b0][w0] = { valid: true, src: b0 === h0 ? 0 : 1, key };
+  if (ui) {
+    markCell(b0, w0, 'new');
+    log(`新 key 写入 B${hex(b0)} W${w0}（src=${b0 === h0 ? 'h0' : 'h1'}）`);
+    setPending(pending.key);
+    setKick(kick);
+  }
+  await paint();
+  stats.kicks++;
+
+  while (true) {
+    const alt = pendingSrc === 0 ? h1Of(pending.key) : h0Of(pending.key);
+    if (ui) setAlt(alt);
+    if (alt === cur) return await finishStash('EVAL：alt == cur');
+
+    if (ui) {
+      resetTransient();
+      markBucket(h0, 'cand0');
+      if (h1 !== h0) markBucket(h1, 'cand1');
+      markBucket(alt, 'read');
+      setState('READ', 'read');
+      log(`READ B${hex(alt)}（pending=${shortKey(pending.key)}）`, 'step');
+    }
+    await paint();
+    if (ui) setState('EVAL', 'eval');
+
+    const free = freeWay(alt);
+    if (free >= 0) return await finishPlace(alt, free, `EVAL：B${hex(alt)} 有空位 W${free}`);
+    if (kick >= MAX_KICKS) return await finishStash(`EVAL：kickCnt=${kick}/${MAX_KICKS} 超限`);
+
+    const w2 = Math.floor(Math.random() * WAYS);
+    const victim2 = { ...table[alt][w2] };
+    if (ui) {
+      resetTransient();
+      markBucket(h0, 'cand0');
+      if (h1 !== h0) markBucket(h1, 'cand1');
+      markBucket(alt, 'cur');
+      markCell(alt, w2, 'victim');
+      log(`EVAL：B${hex(alt)} 满，踢出 W${w2} victim=${shortKey(victim2.key)}`, 'warn');
+    }
+    await paint();
+
+    table[alt][w2] = { valid: true, src: pendingSrc === 0 ? 1 : 0, key: pending.key };
+    if (ui) {
+      markCell(alt, w2, 'new');
+      log(`pending 写入 B${hex(alt)} W${w2}（src 翻转）`);
+    }
+    await paint();
+
+    pending = victim2;
+    pendingSrc = victim2.src;
+    cur = alt;
+    kick++;
+    stats.kicks++;
+    if (ui) { setPending(pending.key); setKick(kick); }
+  }
+}
+
+async function runOp(op) {
+  if (busy) return;
+  const key = parseKey($('keyInput').value);
+  if (key === null) {
+    log('无效 key：请输入 1–16 位十六进制', 'bad');
+    return;
+  }
+  setBusy(true);
+  try {
+    clearHL();
+    if (op === 'APPEND') await doAppend(key, { animate: true });
+    else if (op === 'QUERY') await doQuery(key);
+    else await doDelete(key);
+  } catch (e) {
+    log('内部错误：' + e.message, 'bad');
+    console.error(e);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function randomExistingKey() {
+  const keys = [];
+  for (let b = 0; b < NB; b++) for (let w = 0; w < WAYS; w++) if (table[b][w].valid) keys.push(table[b][w].key);
+  for (let i = 0; i < STASH_N; i++) if (stash[i].valid) keys.push(stash[i].key);
+  if (!keys.length) return rand64();
+  return keys[Math.floor(Math.random() * keys.length)];
+}
+
+async function randomOp() {
+  if (busy) return;
+  const r = Math.random();
+  const op = r < 0.4 ? 'QUERY' : (r < 0.8 ? 'APPEND' : 'DELETE');
+  const key = op === 'APPEND' ? rand64() : randomExistingKey();
+  $('keyInput').value = fmtKey(key);
+  await runOp(op);
+}
+
+async function fillTo(pct) {
+  if (busy) return;
+  setBusy(true);
+  try {
+    clearHL();
+    const target = Math.floor(NB * WAYS * pct / 100);
+    let attempts = 0;
+    while (keyCount() < target && attempts < target * 6 + 100) {
+      attempts++;
+      const key = rand64();
+      if (findKey(key)) continue;
+      await doAppend(key, { animate: false, silent: true });
+    }
+    stats.lastChain = 0;
+    clearPanel();
+    clearHL();
+    log(`填充到 ${pct}%：keys=${keyCount()}/${NB * WAYS}（${(load() * 100).toFixed(1)}%），stash=${stashCount()}/${STASH_N}`, 'good');
+    renderAll();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function resetAll() {
+  if (busy) return;
+  resetModel();
+  $('keyInput').value = fmtKey(rand64());
+  $('log').innerHTML = '';
+  clearPanel();
+  clearHL();
+  renderAll();
+  log('已重置：16 桶 × 4 way，stash=4，maxKicks=8', 'step');
+  log('输入 key 后点 APPEND / QUERY / DELETE，或使用随机操作 / 填充。');
+}
+
+$('themeBtn').onclick = () => {
+  const root = document.documentElement;
+  root.dataset.theme = (root.dataset.theme === 'dark') ? 'light' : 'dark';
+};
+$('speed').oninput = () => { $('speedVal').textContent = $('speed').value + 'ms'; };
+$('randKeyBtn').onclick = () => { $('keyInput').value = fmtKey(rand64()); };
+$('appendBtn').onclick = () => runOp('APPEND');
+$('queryBtn').onclick = () => runOp('QUERY');
+$('deleteBtn').onclick = () => runOp('DELETE');
+$('randOpBtn').onclick = randomOp;
+$('fill50').onclick = () => fillTo(50);
+$('fill75').onclick = () => fillTo(75);
+$('fill90').onclick = () => fillTo(90);
+$('resetBtn').onclick = resetAll;
+$('clearLogBtn').onclick = () => { $('log').innerHTML = ''; logSeq = 0; };
+$('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') runOp('APPEND'); });
+
+resetModel();
+resetAll();
+</script>
+</body>
+</html>

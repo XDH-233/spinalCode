@@ -5,6 +5,7 @@
 > **v1 详细文档：[CuckooHashV1.md](CuckooHashV1.md)**（特性、接口、微架构、流程图、状态机、性能、测试）
 > 测试：[test_cuckoo_hash_table.py](../../src/test/pyuvm/CuckooHashTable/test_cuckoo_hash_table.py)
 > 生成脚本：[gen_cuckoo.sh](../../src/test/pyuvm/CuckooHashTable/gen_cuckoo.sh)
+> 交互演示：[CuckooHashV1Demo.html](CuckooHashV1Demo.html)
 
 ## v1 落地摘要
 
