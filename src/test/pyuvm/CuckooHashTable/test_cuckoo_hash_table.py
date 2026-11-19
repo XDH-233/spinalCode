@@ -7,6 +7,15 @@ from cocotb.triggers import FallingEdge, RisingEdge, ClockCycles
 APPEND, DELETE, QUERY = 0, 1, 2
 SUCCESS, NON_EXIST, UNAVAILABLE, EXIST = 0, 1, 2, 3
 MASK64 = (1 << 64) - 1
+MAX_KICKS = 8
+
+
+def read_stat(dut, name):
+    return int(getattr(dut, "stat_" + name).value)
+
+
+def read_kick_hist(dut):
+    return [read_stat(dut, f"kickHist_{k}") for k in range(MAX_KICKS + 1)]
 
 
 class CuckooTB:
@@ -79,6 +88,13 @@ class CuckooTB:
 class Model:
     def __init__(self):
         self.keys = set()
+        self.append_cnt = 0
+        self.append_exist = 0
+        self.append_unavail = 0
+        self.query_cnt = 0
+        self.query_hit = 0
+        self.delete_cnt = 0
+        self.delete_hit = 0
 
     def check(self, key, op, resp):
         rkey, rop, rstatus = resp
@@ -86,7 +102,9 @@ class Model:
         assert rop == op, f"op mismatch: sent {op}, got {rop}"
 
         if op == APPEND:
+            self.append_cnt += 1
             if key in self.keys:
+                self.append_exist += 1
                 assert rstatus == EXIST, f"append existing {key:#x} -> {rstatus}"
             else:
                 assert rstatus in (SUCCESS, UNAVAILABLE), (
@@ -94,17 +112,107 @@ class Model:
                 )
                 if rstatus == SUCCESS:
                     self.keys.add(key)
+                else:
+                    self.append_unavail += 1
         elif op == DELETE:
+            self.delete_cnt += 1
             if key in self.keys:
+                self.delete_hit += 1
                 assert rstatus == SUCCESS, f"delete present {key:#x} -> {rstatus}"
                 self.keys.remove(key)
             else:
                 assert rstatus == NON_EXIST, f"delete absent {key:#x} -> {rstatus}"
         else:
+            self.query_cnt += 1
             expected = SUCCESS if key in self.keys else NON_EXIST
+            if key in self.keys:
+                self.query_hit += 1
             assert rstatus == expected, (
                 f"query {key:#x} (present={key in self.keys}) -> {rstatus}, expected {expected}"
             )
+
+
+def check_stats(dut, model=None, expect=None, hist_expect=None):
+    append = read_stat(dut, "appendCnt")
+    both_full = read_stat(dut, "appendBothFullCnt")
+    slow = read_stat(dut, "appendSlowCnt")
+    unavail = read_stat(dut, "appendUnavailCnt")
+    exist = read_stat(dut, "appendExistCnt")
+    query = read_stat(dut, "queryCnt")
+    query_hit = read_stat(dut, "queryHitCnt")
+    delete = read_stat(dut, "deleteCnt")
+    delete_hit = read_stat(dut, "deleteHitCnt")
+    stash_hit = read_stat(dut, "stashHitCnt")
+    place = read_stat(dut, "slowPlaceCnt")
+    slow_stash = read_stat(dut, "slowStashCnt")
+    hist = read_kick_hist(dut)
+    entry = read_stat(dut, "entryCnt")
+    entry_max = read_stat(dut, "entryUsedMax")
+    stash_used = read_stat(dut, "stashUsed")
+    stash_max = read_stat(dut, "stashUsedMax")
+    max_kick = read_stat(dut, "maxKick")
+
+    if model is not None:
+        assert append == model.append_cnt, (append, model.append_cnt)
+        assert exist == model.append_exist, (exist, model.append_exist)
+        assert unavail == model.append_unavail, (unavail, model.append_unavail)
+        assert query == model.query_cnt, (query, model.query_cnt)
+        assert query_hit == model.query_hit, (query_hit, model.query_hit)
+        assert delete == model.delete_cnt, (delete, model.delete_cnt)
+        assert delete_hit == model.delete_hit, (delete_hit, model.delete_hit)
+        assert entry + stash_used == len(model.keys), (
+            entry, stash_used, len(model.keys)
+        )
+
+    got = {
+        "append": append,
+        "both_full": both_full,
+        "slow": slow,
+        "unavail": unavail,
+        "exist": exist,
+        "query": query,
+        "query_hit": query_hit,
+        "delete": delete,
+        "delete_hit": delete_hit,
+        "stash_hit": stash_hit,
+        "place": place,
+        "slow_stash": slow_stash,
+        "entry": entry,
+        "entry_max": entry_max,
+        "stash_used": stash_used,
+        "stash_max": stash_max,
+        "max_kick": max_kick,
+    }
+    if expect is not None:
+        for name, value in expect.items():
+            assert got[name] == value, f"stat {name}: got {got[name]}, expected {value}"
+    if hist_expect is not None:
+        assert hist == hist_expect, f"kickHist: got {hist}, expected {hist_expect}"
+
+    # 内部一致性
+    assert both_full == slow + unavail
+    assert slow == place + slow_stash
+    assert sum(hist) + exist + unavail == append, (hist, exist, unavail, append)
+    assert sum(hist[1:]) == slow, (hist, slow)
+    assert hist[0] == append - exist - unavail - slow
+    assert max_kick <= MAX_KICKS
+    assert entry_max >= entry and stash_max >= stash_used
+    assert stash_used == bin(int(dut.stashValid.value)).count("1")
+    if slow > 0:
+        top = max(k for k in range(1, MAX_KICKS + 1) if hist[k] > 0)
+        assert max_kick == top, (max_kick, top, hist)
+    else:
+        assert max_kick == 0
+
+    dut._log.info(
+        "stats: append=%d bothFull=%d slow=%d unavail=%d exist=%d "
+        "query=%d/%d delete=%d/%d stashHit=%d place=%d slowStash=%d "
+        "entry=%d/%d stash=%d/%d maxKick=%d hist=%s",
+        append, both_full, slow, unavail, exist,
+        query_hit, query, delete_hit, delete, stash_hit,
+        place, slow_stash, entry, entry_max, stash_used, stash_max,
+        max_kick, hist,
+    )
 
 
 def unique_keys(rng, used, n):
@@ -210,6 +318,9 @@ async def test_cuckoo(dut):
         model.check(k, QUERY, await tb.op(k, QUERY))
 
     dut._log.info(f"final model size = {len(model.keys)}")
+    # 最后一笔响应在 falling edge 被采样，计数器要到下一个 rising edge 才更新
+    await ClockCycles(dut.clk, 2)
+    check_stats(dut, model=model)
 
 
 @cocotb.test()
@@ -284,3 +395,29 @@ async def test_stash_hit(dut):
             continue
         status = (await tb.op(k, QUERY))[2]
         assert status == SUCCESS, f"query {k:#x} after delete -> {status}"
+
+    await ClockCycles(dut.clk, 2)
+    check_stats(
+        dut,
+        expect={
+            "append": 5,
+            "both_full": 1,
+            "slow": 1,
+            "unavail": 0,
+            "exist": 0,
+            "query": 10,
+            "query_hit": 9,
+            "delete": 1,
+            "delete_hit": 1,
+            "stash_hit": 2,
+            "place": 0,
+            "slow_stash": 1,
+            "entry": 4,
+            "entry_max": 4,
+            "stash_used": 0,
+            "stash_max": 1,
+            "max_kick": 1,
+        },
+        hist_expect=[4, 1, 0, 0, 0, 0, 0, 0, 0],
+    )
+

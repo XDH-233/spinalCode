@@ -12,7 +12,8 @@
 - FPGA 目标，默认参数 `CuckooHashTable(64, 8, 4)`：256 桶 × 4 way，容量 1024，`maxKicks=8`，`stashDepth=4`。
 - 快路径 2 拍延迟、1 次/拍；两桶全满的 APPEND 进入整表 stall 的逐出慢路径，失败项进 stash。
 - 输入/输出均为 `Stream`，响应保序；慢路径和下游反压都会传到 `io.key.ready`。
-- cocotb + Verilator 验证通过：定向、88% 负载、随机混合、back-to-back 突发（12833 ns，最终 922 key）。
+- `stat` 输出提供 APPEND 满路径/慢路径比例、踢出次数分布、query/delete 命中、stash 命中、load 与高水位等指标。
+- cocotb + Verilator 验证通过：定向、88% 负载、随机混合、back-to-back 突发（13078 ns，最终 937 key）。
 
 实现细节见 [CuckooHashV1.md](CuckooHashV1.md)。
 

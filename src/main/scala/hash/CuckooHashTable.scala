@@ -16,6 +16,34 @@ object CuckooHashState extends SpinalEnum {
   val IDLE, EVAL, READ, FINISH = newElement()
 }
 
+/** 统计输出。所有计数器在 reset 时清零，假设表/ stash 同时被清空。 */
+case class CuckooHashStats(
+    entryCntWidth: Int,
+    stashUsedWidth: Int,
+    kickBits: Int,
+    maxKicks: Int,
+    statWidth: Int = 32
+) extends Bundle {
+  val appendCnt:         UInt = UInt(statWidth bits)
+  val appendBothFullCnt: UInt = UInt(statWidth bits)
+  val appendSlowCnt:     UInt = UInt(statWidth bits)
+  val appendUnavailCnt:  UInt = UInt(statWidth bits)
+  val appendExistCnt:    UInt = UInt(statWidth bits)
+  val queryCnt:          UInt = UInt(statWidth bits)
+  val queryHitCnt:       UInt = UInt(statWidth bits)
+  val deleteCnt:         UInt = UInt(statWidth bits)
+  val deleteHitCnt:      UInt = UInt(statWidth bits)
+  val stashHitCnt:       UInt = UInt(statWidth bits)
+  val slowPlaceCnt:      UInt = UInt(statWidth bits)
+  val slowStashCnt:      UInt = UInt(statWidth bits)
+  val kickHist:          Vec[UInt] = Vec.fill(maxKicks + 1)(UInt(statWidth bits))
+  val entryCnt:          UInt = UInt(entryCntWidth bits)
+  val entryUsedMax:      UInt = UInt(entryCntWidth bits)
+  val stashUsed:         UInt = UInt(stashUsedWidth bits)
+  val stashUsedMax:      UInt = UInt(stashUsedWidth bits)
+  val maxKick:           UInt = UInt(kickBits bits)
+}
+
 /**
  * 布谷鸟哈希表 v1（FPGA）
  *
@@ -30,7 +58,8 @@ case class CuckooHashTable(
     hashValueWidth: Int,
     bucketDepth: Int,
     maxKicks: Int = 8,
-    stashDepth: Int = 4
+    stashDepth: Int = 4,
+    statWidth: Int = 32
 ) extends Component {
 
   require(bucketDepth >= 2, "bucketDepth must be >= 2")
@@ -38,15 +67,19 @@ case class CuckooHashTable(
   require(maxKicks >= 1, "maxKicks must be >= 1")
   require(stashDepth >= 1, "stashDepth must be >= 1")
 
-  val entryWidth  = keyWidth + 2
-  val bucketWidth = entryWidth * bucketDepth
-  val tableDepth  = 1 << hashValueWidth
-  val wayBits     = log2Up(bucketDepth)
-  val kickBits    = log2Up(maxKicks + 1)
+  val entryWidth     = keyWidth + 2
+  val bucketWidth    = entryWidth * bucketDepth
+  val tableDepth     = 1 << hashValueWidth
+  val capacity       = tableDepth * bucketDepth
+  val wayBits        = log2Up(bucketDepth)
+  val kickBits       = log2Up(maxKicks + 1)
+  val entryCntWidth  = log2Up(capacity + 1)
+  val stashUsedWidth = log2Up(stashDepth + 1)
 
   val io = new Bundle {
     val key:        Stream[HashAccess]   = slave Stream (HashAccess(keyWidth))
     val access_out: Stream[MultiHashOut] = master Stream (MultiHashOut(keyWidth))
+    val stat:       CuckooHashStats      = out (CuckooHashStats(entryCntWidth, stashUsedWidth, kickBits, maxKicks, statWidth))
   }
   noIoPrefix()
 
@@ -262,7 +295,8 @@ case class CuckooHashTable(
   val evalVictimSrc: Bool = altSrcs(waySelRandom)
 
   // 下一跳位置：victim 的另一个候选桶
-  val triggerNow: Bool = slowTriggerCond && (state === CuckooHashState.IDLE)
+  // 必须带 v_d1：否则慢路径 FINISH 回到 IDLE 后，S1 寄存器里的旧 APPEND 会再次触发慢路径
+  val triggerNow: Bool = v_d1 && slowTriggerCond && (state === CuckooHashState.IDLE)
   val altSrc:   Bool = Mux(triggerNow, firstVictimSrc, evalVictimSrc)
   val altValue: Bits = Mux(altSrc, hash0, hash1) // src=0 表示当前在 h0，另一候选为 h1
   val firstAltValid: Bool = altValue.asUInt =/= slowBucket
@@ -394,6 +428,109 @@ case class CuckooHashTable(
   when(v_d1 && del && stashHit) {
     stashValid := stashValid & ~stashHitMask
   }
+
+  // ================================================================ statistics
+  // 计数在响应被下游接收（valid && ready）时更新，保证反压/慢路径下只计一次。
+  val statAppendCnt:         UInt = Reg(UInt(statWidth bits)) init 0
+  val statAppendBothFullCnt: UInt = Reg(UInt(statWidth bits)) init 0
+  val statAppendSlowCnt:     UInt = Reg(UInt(statWidth bits)) init 0
+  val statAppendUnavailCnt:  UInt = Reg(UInt(statWidth bits)) init 0
+  val statAppendExistCnt:    UInt = Reg(UInt(statWidth bits)) init 0
+  val statQueryCnt:          UInt = Reg(UInt(statWidth bits)) init 0
+  val statQueryHitCnt:       UInt = Reg(UInt(statWidth bits)) init 0
+  val statDeleteCnt:         UInt = Reg(UInt(statWidth bits)) init 0
+  val statDeleteHitCnt:      UInt = Reg(UInt(statWidth bits)) init 0
+  val statStashHitCnt:       UInt = Reg(UInt(statWidth bits)) init 0
+  val statSlowPlaceCnt:      UInt = Reg(UInt(statWidth bits)) init 0
+  val statSlowStashCnt:      UInt = Reg(UInt(statWidth bits)) init 0
+  val statKickHist:          Vec[UInt] = Vec.fill(maxKicks + 1)(Reg(UInt(statWidth bits)) init 0)
+  val statEntryCnt:          UInt = Reg(UInt(entryCntWidth bits)) init 0
+  val statEntryUsedMax:      UInt = Reg(UInt(entryCntWidth bits)) init 0
+  val statStashUsed:         UInt = Reg(UInt(stashUsedWidth bits)) init 0
+  val statStashUsedMax:      UInt = Reg(UInt(stashUsedWidth bits)) init 0
+  val statMaxKick:           UInt = Reg(UInt(kickBits bits)) init 0
+
+  val statFastFire: Bool = fastRespValid && io.access_out.ready
+  val statSlowFire: Bool = slowRespValid && io.access_out.ready
+
+  val statFastAppend: Bool = statFastFire && (op_d1 === HashOperation.APPEND)
+  val statFastQuery:  Bool = statFastFire && (op_d1 === HashOperation.QUERY)
+  val statFastDelete: Bool = statFastFire && (op_d1 === HashOperation.DELETE)
+
+  // 快路径成功插入：key 不存在且两桶没有全满（必有一个空位）
+  val statFastAppendSuccess:   Bool = statFastAppend && !exist && !appendFull
+  val statFastAppendExist:     Bool = statFastAppend && exist
+  // 快路径返回 UNAVAILABLE：两桶全满且 stash 满（stash 未满会转慢路径）
+  val statFastAppendUnavail:   Bool = statFastAppend && appendFull
+  val statFastDeleteBucketHit: Bool = statFastDelete && (hit0 || hit1)
+
+  def statInc(reg: UInt, cond: Bool): Unit = when(cond) { reg := reg + 1 }
+
+  statInc(statAppendCnt,         statFastAppend || statSlowFire)
+  statInc(statAppendBothFullCnt, statFastAppendUnavail || statSlowFire)
+  statInc(statAppendSlowCnt,     statSlowFire)
+  statInc(statAppendUnavailCnt,  statFastAppendUnavail)
+  statInc(statAppendExistCnt,    statFastAppendExist)
+  statInc(statQueryCnt,          statFastQuery)
+  statInc(statQueryHitCnt,       statFastQuery && exist)
+  statInc(statDeleteCnt,         statFastDelete)
+  statInc(statDeleteHitCnt,      statFastDelete && exist)
+  statInc(statStashHitCnt,       statFastFire && stashHit)
+  statInc(statSlowPlaceCnt,      statSlowFire && !needStash)
+  statInc(statSlowStashCnt,      statSlowFire && needStash)
+
+  // 踢出次数分布：bin0 = 快路径成功插入；bin k = 慢路径成功且踢出 k 次
+  for (k <- 0 to maxKicks) {
+    if (k == 0) {
+      when(statFastAppendSuccess) {
+        statKickHist(k) := statKickHist(k) + 1
+      }
+    } else {
+      when(statSlowFire && kickCnt === U(k)) {
+        statKickHist(k) := statKickHist(k) + 1
+      }
+    }
+  }
+  when(statSlowFire && kickCnt > statMaxKick) {
+    statMaxKick := kickCnt
+  }
+
+  // 表内有效 key 数（不含 stash）；慢路径只有最终放下了 pending 才 +1
+  val statEntryNext: UInt = UInt(entryCntWidth bits)
+  statEntryNext := statEntryCnt + (statFastAppendSuccess || (statSlowFire && !needStash)).asUInt - statFastDeleteBucketHit.asUInt
+  when(statEntryNext > statEntryUsedMax) {
+    statEntryUsedMax := statEntryNext
+  }
+  statEntryCnt := statEntryNext
+
+  // stash 占用数；stash 写入发生在 FINISH fire，删除命中 stash 时 -1
+  val statStashNext: UInt = UInt(stashUsedWidth bits)
+  statStashNext := statStashUsed + (statSlowFire && needStash).asUInt - (statFastDelete && stashHit).asUInt
+  when(statStashNext > statStashUsedMax) {
+    statStashUsedMax := statStashNext
+  }
+  statStashUsed := statStashNext
+
+  io.stat.appendCnt         := statAppendCnt
+  io.stat.appendBothFullCnt := statAppendBothFullCnt
+  io.stat.appendSlowCnt     := statAppendSlowCnt
+  io.stat.appendUnavailCnt  := statAppendUnavailCnt
+  io.stat.appendExistCnt    := statAppendExistCnt
+  io.stat.queryCnt          := statQueryCnt
+  io.stat.queryHitCnt       := statQueryHitCnt
+  io.stat.deleteCnt         := statDeleteCnt
+  io.stat.deleteHitCnt      := statDeleteHitCnt
+  io.stat.stashHitCnt       := statStashHitCnt
+  io.stat.slowPlaceCnt      := statSlowPlaceCnt
+  io.stat.slowStashCnt      := statSlowStashCnt
+  for (k <- 0 to maxKicks) {
+    io.stat.kickHist(k) := statKickHist(k)
+  }
+  io.stat.entryCnt     := statEntryCnt
+  io.stat.entryUsedMax := statEntryUsedMax
+  io.stat.stashUsed    := statStashUsed
+  io.stat.stashUsedMax := statStashUsedMax
+  io.stat.maxKick      := statMaxKick
 }
 
 object CuckooHashTableRTL extends App {

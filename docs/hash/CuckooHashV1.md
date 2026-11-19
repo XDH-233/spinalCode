@@ -42,6 +42,7 @@ v1 是一个面向 FPGA 的 2-way 布谷鸟哈希表，支持 APPEND / DELETE / 
 | F11 | 响应保序 | 单条流水线 + 慢路径整表 stall，响应严格按输入顺序输出 |
 | F12 | FPGA 友好 | 纯 RTL，无厂商原语；存储为 2R1W `Mem` |
 | F13 | 可复现验证 | cocotb scoreboard + Verilator，支持 FST 波形 |
+| F14 | 性能统计 | `stat` 输出：APPEND 满路径率、踢出分布、命中率、load、stash 高水位等 |
 
 ---
 
@@ -62,6 +63,7 @@ v1 是一个面向 FPGA 的 2-way 布谷鸟哈希表，支持 APPEND / DELETE / 
 | `access_out_payload_key` | out | `keyWidth` | 响应 key（与请求一致） |
 | `access_out_payload_op` | out | 2 | 响应 op（与请求一致） |
 | `access_out_payload_status` | out | 2 | 操作结果 |
+| `stat_*` | out | 变宽 | 性能计数器，见 3.6 |
 
 `noIoPrefix()`，端口名与生成 Verilog 一致。
 
@@ -97,7 +99,8 @@ v1 是一个面向 FPGA 的 2-way 布谷鸟哈希表，支持 APPEND / DELETE / 
 说明：
 
 - 慢路径成功时统一返回 `SUCCESS`，即使有 victim 被放入 stash。
-- v1 不提供 “本次插入是否用了 stash” 的状态位/计数器；需要时可加 debug 输出。
+- v1 不提供“本次插入是否用了 stash”的 per-op 状态位；但 `stat` 输出提供
+  `slowStashCnt` / `stashUsed` 等聚合统计。
 - `UNAVAILABLE` 只在“两桶全满 + stash 满 + key 不存在”时出现，且此时没有任何写。
 
 ### 3.4 握手规则
@@ -135,6 +138,40 @@ sequenceDiagram
     M-->>D: 两个桶数据
     D-->>U: access_out_valid + status
     Note over D,M: cycle n+2：桶写提交
+```
+
+### 3.6 统计输出
+
+`io.stat` 是一组性能计数器。除 `entryCnt/stashUsed` 使用推导位宽外，其余计数器为
+`statWidth`（默认 32 bit）。所有计数器在 `reset` 时清零，并假设表/stash 同时为空。
+
+| 计数器 | 含义 |
+|---|---|
+| `appendCnt` | 完成的 APPEND 总数 |
+| `appendBothFullCnt` | key 不存在且两个候选桶都满的 APPEND（= slow + unavail） |
+| `appendSlowCnt` | 实际进入逐出 FSM 的 APPEND |
+| `appendUnavailCnt` | 两桶全满 + stash 满，零写返回 `UNAVAILABLE` |
+| `appendExistCnt` | APPEND 命中已有 key，返回 `EXIST` |
+| `queryCnt` / `queryHitCnt` | QUERY 总数 / 命中数（桶或 stash） |
+| `deleteCnt` / `deleteHitCnt` | DELETE 总数 / 命中数 |
+| `stashHitCnt` | 任意快路径操作命中 stash 的次数 |
+| `slowPlaceCnt` | 慢路径最终把 pending 放进空位的次数 |
+| `slowStashCnt` | 慢路径最终把 pending 写入 stash 的次数 |
+| `kickHist[0..maxKicks]` | 成功插入的踢出次数分布；bin0 = 快路径 |
+| `entryCnt` | 当前表内 entry 数（不含 stash） |
+| `entryUsedMax` | `entryCnt` 高水位 |
+| `stashUsed` / `stashUsedMax` | 当前 / 高水位 stash 占用 |
+| `maxKick` | 慢路径观察到的最大踢出次数 |
+
+计数在响应被下游接收（`valid && ready`）时更新，因此反压和慢路径下每次操作只计一次。
+`APPEND` 的闭环关系：
+
+```
+appendCnt = appendExistCnt + appendUnavailCnt + sum(kickHist)
+appendBothFullCnt = appendSlowCnt + appendUnavailCnt
+appendSlowCnt = slowPlaceCnt + slowStashCnt
+sum(kickHist[1..]) = appendSlowCnt
+entryCnt + stashUsed = 当前总 key 数
 ```
 
 ---
@@ -534,13 +571,34 @@ stateDiagram-v2
 | FSM/控制寄存器 | 约 150~250 FF |
 | CRC | 2 个 64 级 CRC-8 组合树，约数百 LUT |
 | LFSR | 16 FF |
+| `stat` 计数器 | 约 20 个 32-bit 计数器 + 9 个 kickHist 计数器 ≈ 1K FF（`statWidth` 可调） |
 
 ### 7.5 负载与容量
 
 - 容量 `C = 2^hashValueWidth × bucketDepth = 256 × 4 = 1024`。
 - 2 hash、W=4 的理论负载阈值约 97%；工程目标建议 ≤90%。
-- 本次测试填到约 88% 后做随机/突发操作，最终模型 922 个 key（约 90%）。
+- 本次测试填到约 88% 后做随机/突发操作，最终模型 937 个 key（约 92%）。
 - 超过目标负载后，慢路径触发率、踢链长度和 stash 占用会明显上升。
+
+### 7.6 统计指标
+
+从 `io.stat` 可以直接算出的效率指标（比例在软件侧计算，RTL 不做除法）：
+
+| 指标 | 公式 | 说明 |
+|---|---|---|
+| 满路径率 | `appendBothFullCnt / appendCnt` | 两个候选桶都满的比例 |
+| 慢路径率 | `appendSlowCnt / appendCnt` | 实际启动逐出的比例 |
+| UNAVAILABLE 率 | `appendUnavailCnt / appendCnt` | stash 满导致的零写失败 |
+| 快路径成功率 | `kickHist[0] / appendCnt` | 无需逐出的插入比例 |
+| 慢路径改投成功率 | `slowPlaceCnt / appendSlowCnt` | 踢链最终找到空位的比例 |
+| 慢路径进 stash 率 | `slowStashCnt / appendSlowCnt` | 踢链失败/卡死的比例 |
+| 平均踢出次数 | `Σ k·kickHist[k] / appendSlowCnt` | 只统计慢路径成功项 |
+| 最大踢链 | `maxKick` | 观察到的最大 kick 数 |
+| 表负载 | `entryCnt / (2^h × W)` | 不含 stash |
+| stash 压力 | `stashUsedMax / stashDepth` | 高水位 |
+| 查询命中率 | `queryHitCnt / queryCnt` | 桶或 stash |
+| 删除命中率 | `deleteHitCnt / deleteCnt` | |
+| 总 key 数 | `entryCnt + stashUsed` | 桶 + stash |
 
 ---
 
@@ -596,11 +654,20 @@ victim 的另一个候选桶仍是 `0x2E`，无法改投，必然写入 stash。
 
 ### 8.5 结果
 
-- **TESTS=2 PASS=2**，总仿真 12930 ns（2 ns 周期，约 6465 拍）：
-  - `test_cuckoo`：12833 ns，最终模型 922 个 key；
-  - `test_stash_hit`：97 ns，确认 `stashValid` 非 0、stash 中的 key 查询时
-    `hit0=hit1=0 && stashHit=1`、DELETE 后 stash 清零。
-- `dump.fst` 约 2.4 MB。
+- **TESTS=2 PASS=2**，总仿真 13178 ns（2 ns 周期，约 6589 拍）：
+  - `test_cuckoo`：13078 ns，最终模型 937 个 key；统计：
+    `append=1779, bothFull=267, slow=95, unavail=172, exist=359,
+    queryHit/query=885/1156, deleteHit/delete=311/396, stashHit=8,
+    slowPlace=89, slowStash=6, entry=933/983, stash=4/4, maxKick=8,
+    kickHist=[1153,48,20,8,7,5,1,2,4]`。
+  - `test_stash_hit`：100 ns，确认 `stashValid` 非 0、stash 中的 key 查询时
+    `hit0=hit1=0 && stashHit=1`、DELETE 后 stash 清零；统计精确匹配
+    `append=5, bothFull=1, slow=1, slowStash=1, kickHist=[4,1,0,...], entry=4, stash=0/1`。
+- 测试在末尾读取 `stat_*`，与 Python 模型/内部一致性关系核对：
+  `bothFull=slow+unavail`、`slow=place+slowStash`、
+  `append=exist+unavail+sum(kickHist)`、`entry+stash=模型 key 数`、
+  `stashUsed=popcount(stashValid)`、高水位 ≥ 当前值、`maxKick` 与直方图最高 bin 一致。
+- `dump.fst` 约 2.5 MB。
 - Verilator lint：`--lint-only -Wall -Wno-fatal` 无 latch、多驱动、宽度错误；
   只有 enum `_string` 调试信号和少量未用 bit 的 UNUSEDSIGNAL 警告。
 
@@ -634,10 +701,11 @@ make SIM=verilator
 - 快路径 APPEND/QUERY/DELETE；
 - 慢路径（含 `alt == cur` 的立即 stash 分支）；
 - stash 写入/命中/删除（确定性定向用例，`stashHit` 已实际拉高）；
-- 88%~90% 高负载；
+- 88%~96% 高负载（峰值 `entryUsedMax=983/1024`）；
 - 随机混合操作；
 - back-to-back 同桶写读（写前递）；
-- 响应保序。
+- 响应保序；
+- `stat` 计数器：与 Python 模型核对，并检查闭环关系、直方图、stash/entry 一致性和高水位。
 
 未覆盖/待补：
 
@@ -713,13 +781,25 @@ make SIM=verilator
 - 下游必须按 valid/ready 处理，不能假设固定延迟。
 - 响应保序，但慢路径会 stall 后续操作。
 
+### 9.11 慢路径触发缺少 `v_d1`（已修复）
+
+`triggerNow` 最初写成 `slowTriggerCond && state == IDLE`，没有带 `v_d1`。
+慢路径 FINISH 回到 IDLE 后，S1 里残留的 `op_d1 = APPEND` 和桶状态可能让它再次触发，
+导致同一次 APPEND 被重复执行慢路径、重复计数。加入 `v_d1` 后修复：
+
+```scala
+val triggerNow = v_d1 && slowTriggerCond && (state === CuckooHashState.IDLE)
+```
+
+该问题是在加入 `stat` 后，用 `appendSlowCnt` 观察到“后续 QUERY 阶段 slow 计数 +1”定位的。
+
 ---
 
 ## 10. 后续工作
 
 1. **v2 并发查询**：慢路径期间允许 QUERY 继续；需要 pending-write forwarding +
    in-flight key 比较；DELETE/APPEND 仍然 stall。
-2. **debug/stat 输出**：`kick_fail_cnt`、`max_chain_len`、`stash_used`、`kick_cnt`。
+2. **统计扩展**：按桶/way 的命中分布、逐脚踢出分布、AXI/APB 统计寄存器接口。
 3. **stash drain**：空闲周期把 stash 项重新尝试插回桶。
 4. **压力验证**：95% 负载扫描、强制成环/超限、下游反压、随机 seed。
 5. **综合评估**：2R1W BRAM 映射、Fmax、资源；必要时给慢路径首拍加寄存器。
@@ -738,6 +818,7 @@ make SIM=verilator
 | `bucketDepth` | 4 | 2 的幂，≥2 | 每桶 way 数 |
 | `maxKicks` | 8 | ≥1 | 最大踢出次数 |
 | `stashDepth` | 4 | ≥1 | stash 项数 |
+| `statWidth` | 32 | ≥1 | 事件计数器位宽（entry/stash 计数用推导宽度） |
 
 派生量：
 
@@ -748,6 +829,9 @@ make SIM=verilator
 | `tableDepth` | `1 << hashValueWidth` | 256 |
 | `wayBits` | `log2Up(bucketDepth)` | 2 |
 | `kickBits` | `log2Up(maxKicks + 1)` | 4 |
+| `capacity` | `tableDepth × bucketDepth` | 1024 |
+| `entryCntWidth` | `log2Up(capacity + 1)` | 11 |
+| `stashUsedWidth` | `log2Up(stashDepth + 1)` | 3 |
 
 ## 附录 B：枚举编码
 

@@ -147,6 +147,13 @@ input[type=range]{padding:0;border:none;background:none;width:110px}
 .statGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .statGrid > div{background:var(--surface2);border-radius:6px;padding:6px 8px;display:flex;justify-content:space-between;gap:8px;font-size:12px}
 .statGrid span{color:var(--muted)}
+.hist{margin-top:10px;border-top:1px solid var(--grid);padding-top:8px}
+.histTitle{font-size:11px;color:var(--muted);margin-bottom:5px}
+.histRow{display:grid;grid-template-columns:22px 1fr 38px;gap:6px;align-items:center;font-size:10.5px;padding:1px 0}
+.histLabel{color:var(--muted);text-align:right}
+.histBar{height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;border:1px solid var(--border)}
+.histBar i{display:block;height:100%;background:var(--s1);width:0;transition:width .2s}
+.histVal{text-align:right;color:var(--ink2)}
 
 /* ===== 日志 ===== */
 .logCard{margin-top:14px}
@@ -236,10 +243,28 @@ input[type=range]{padding:0;border:none;background:none;width:110px}
         <div><span>load</span><b id="statLoad" class="mono">0%</b></div>
         <div><span>stash</span><b id="statStash" class="mono">0/4</b></div>
         <div><span>ops</span><b id="statOps" class="mono">0</b></div>
-        <div><span>evictions</span><b id="statEvict" class="mono">0</b></div>
         <div><span>kicks</span><b id="statKicks" class="mono">0</b></div>
         <div><span>stashUses</span><b id="statStashUses" class="mono">0</b></div>
         <div><span>last chain</span><b id="statChain" class="mono">0</b></div>
+        <div><span>stashHit</span><b id="statStashHit" class="mono">0</b></div>
+        <div><span>query hit</span><b id="statQueryHit" class="mono">0/0</b></div>
+        <div><span>delete hit</span><b id="statDeleteHit" class="mono">0/0</b></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="cardHead"><h2>APPEND 统计</h2><span id="stSlowRatio" class="hint mono">slow 0%</span></div>
+      <div class="statGrid">
+        <div><span>appends</span><b id="stAppend" class="mono">0</b></div>
+        <div><span>both full</span><b id="stBothFull" class="mono">0</b></div>
+        <div><span>slow path</span><b id="stSlow" class="mono">0</b></div>
+        <div><span>unavail</span><b id="stUnavail" class="mono">0</b></div>
+        <div><span>exist</span><b id="stExist" class="mono">0</b></div>
+        <div><span>slow stash</span><b id="stSlowStash" class="mono">0</b></div>
+      </div>
+      <div class="hist">
+        <div class="histTitle">踢出次数分布（bin0 = 快路径）</div>
+        <div id="kickHistWrap"></div>
       </div>
     </section>
   </div>
@@ -253,7 +278,7 @@ input[type=range]{padding:0;border:none;background:none;width:110px}
 <section class="card foot">
   <h2>说明</h2>
   <p>本页是 v1 的行为模型：CRC-8（poly <code>0x9B</code> / <code>0x1D</code>，init <code>0xFF</code>）给出两个候选桶；APPEND 优先写 h0，再写 h1；两个桶都满时进入逐出慢路径，随机踢出 victim，按 <code>src</code> 标签改投；<code>alt == cur</code> 或 <code>kickCnt == 8</code> 时把 pending 写入 stash。进入慢路径前会预检 stash，满则返回 UNAVAILABLE 且不写表。</p>
-  <p>为便于观察，桶表缩小为 <b>16 桶</b>（取 CRC-8 低 4 位），RTL 默认是 256 桶；桶深 4、stash 4、maxKicks 8、src 标签和失败原子性与 RTL 一致。绿色=写/命中，红色=victim，黄色=当前读桶。</p>
+  <p>为便于观察，桶表缩小为 <b>16 桶</b>（取 CRC-8 低 4 位），RTL 默认是 256 桶；桶深 4、stash 4、maxKicks 8、src 标签和失败原子性与 RTL 一致。绿色=写/命中，红色=victim，黄色=当前读桶。右侧 APPEND 统计对应 RTL 的 <code>stat</code> 输出：<code>kickHist[0]</code>=快路径，<code>kickHist[k]</code>=慢路径踢出 k 次。</p>
 </section>
 
 <script>
@@ -306,7 +331,13 @@ function newEntry() { return { valid: false, src: 0, key: 0n }; }
 function resetModel() {
   table = Array.from({ length: NB }, () => Array.from({ length: WAYS }, () => newEntry()));
   stash = Array.from({ length: STASH_N }, () => ({ valid: false, key: 0n }));
-  stats = { ops: 0, appends: 0, queries: 0, deletes: 0, evictions: 0, kicks: 0, stashUses: 0, fails: 0, lastStatus: '—', lastChain: 0 };
+  stats = {
+    ops: 0, appends: 0, queries: 0, deletes: 0, kicks: 0, stashUses: 0, fails: 0,
+    bothFull: 0, slow: 0, unavail: 0, existCnt: 0, slowStash: 0,
+    queryHit: 0, deleteHit: 0, stashHit: 0,
+    hist: Array(MAX_KICKS + 1).fill(0),
+    lastStatus: '—', lastChain: 0,
+  };
   hl = { buckets: new Map(), cells: new Map(), stash: new Map() };
   logSeq = 0;
 }
@@ -460,14 +491,50 @@ function updateStats() {
   $('statLoad').textContent = (l * 100).toFixed(1) + '%';
   $('statStash').textContent = `${st}/${STASH_N}`;
   $('statOps').textContent = stats.ops;
-  $('statEvict').textContent = stats.evictions;
   $('statKicks').textContent = stats.kicks;
   $('statStashUses').textContent = stats.stashUses;
   $('statChain').textContent = stats.lastChain;
+  $('statStashHit').textContent = stats.stashHit;
+  $('statQueryHit').textContent = `${stats.queryHit}/${stats.queries}`;
+  $('statDeleteHit').textContent = `${stats.deleteHit}/${stats.deletes}`;
+
+  const pct = n => stats.appends ? (n * 100 / stats.appends).toFixed(1) + '%' : '0%';
+  $('stAppend').textContent = stats.appends;
+  $('stBothFull').textContent = `${stats.bothFull} (${pct(stats.bothFull)})`;
+  $('stSlow').textContent = `${stats.slow} (${pct(stats.slow)})`;
+  $('stUnavail').textContent = stats.unavail;
+  $('stExist').textContent = stats.existCnt;
+  $('stSlowStash').textContent = stats.slowStash;
+  $('stSlowRatio').textContent = `slow ${pct(stats.slow)}`;
+  renderKickHist();
+
   $('stashCount').textContent = `${st} / ${STASH_N}`;
   const fill = $('loadFill');
   fill.style.width = (l * 100).toFixed(1) + '%';
   fill.className = l >= 0.95 ? 'crit' : (l >= 0.85 ? 'warn' : '');
+}
+
+function renderKickHist() {
+  const wrap = $('kickHistWrap');
+  const max = Math.max(1, ...stats.hist);
+  wrap.innerHTML = '';
+  for (let k = 0; k <= MAX_KICKS; k++) {
+    const row = document.createElement('div');
+    row.className = 'histRow';
+    const lab = document.createElement('span');
+    lab.className = 'histLabel';
+    lab.textContent = k;
+    const bar = document.createElement('div');
+    bar.className = 'histBar';
+    const fill = document.createElement('i');
+    fill.style.width = ((stats.hist[k] / max) * 100).toFixed(1) + '%';
+    bar.appendChild(fill);
+    const val = document.createElement('b');
+    val.className = 'histVal';
+    val.textContent = stats.hist[k];
+    row.append(lab, bar, val);
+    wrap.appendChild(row);
+  }
 }
 
 function renderAll() {
@@ -517,6 +584,8 @@ async function doQuery(key) {
   setState('S1 探测', 'fast');
   const found = findKey(key);
   if (found) {
+    stats.queryHit++;
+    if (found.type === 'stash') stats.stashHit++;
     markHit(found);
     setStatus('SUCCESS', 'ok');
     stats.lastStatus = 'SUCCESS';
@@ -559,6 +628,8 @@ async function doDelete(key) {
     return;
   }
 
+  stats.deleteHit++;
+  if (found.type === 'stash') stats.stashHit++;
   resetTransient();
   markBucket(h0, 'cand0');
   if (h1 !== h0) markBucket(h1, 'cand1');
@@ -605,6 +676,8 @@ async function doAppend(key, opt = {}) {
   if (ui) setState('S1 探测', 'fast');
   const found = findKey(key);
   if (found) {
+    stats.existCnt++;
+    if (found.type === 'stash') stats.stashHit++;
     stats.lastStatus = 'EXIST';
     if (ui) {
       markHit(found);
@@ -620,6 +693,7 @@ async function doAppend(key, opt = {}) {
   if (w < 0 && h1 !== h0) { b = h1; w = freeWay(h1); src = 1; }
   if (w >= 0) {
     table[b][w] = { valid: true, src, key };
+    stats.hist[0]++;
     stats.lastStatus = 'SUCCESS';
     if (ui) {
       resetTransient();
@@ -636,6 +710,8 @@ async function doAppend(key, opt = {}) {
 
   if (ui) log('两个候选桶全满，检查 stash', 'warn');
   if (stashFree() < 0) {
+    stats.bothFull++;
+    stats.unavail++;
     stats.lastStatus = 'UNAVAILABLE';
     stats.fails++;
     if (ui) {
@@ -647,7 +723,8 @@ async function doAppend(key, opt = {}) {
     return 'UNAVAILABLE';
   }
 
-  stats.evictions++;
+  stats.slow++;
+  stats.bothFull++;
   const b0 = (h0 === h1) ? h0 : (Math.random() < 0.5 ? h0 : h1);
   const w0 = Math.floor(Math.random() * WAYS);
   const victim = { ...table[b0][w0] };
@@ -658,6 +735,8 @@ async function doAppend(key, opt = {}) {
     const si = stashFree();
     stash[si] = { valid: true, key: pending.key };
     stats.stashUses++;
+    stats.slowStash++;
+    stats.hist[kick]++;
     stats.lastStatus = 'SUCCESS';
     stats.lastChain = kick;
     if (ui) {
@@ -677,6 +756,7 @@ async function doAppend(key, opt = {}) {
 
   const finishPlace = async (bucket, way, reason) => {
     table[bucket][way] = { valid: true, src: pendingSrc === 0 ? 1 : 0, key: pending.key };
+    stats.hist[kick]++;
     stats.lastStatus = 'SUCCESS';
     stats.lastChain = kick;
     if (ui) {
